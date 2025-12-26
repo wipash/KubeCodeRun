@@ -1,0 +1,100 @@
+name: Execution Env Build and Publish
+
+on:
+  push:
+    branches: ["main", "dev"]
+    paths:
+      - "docker/**"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_BASE: ${{ github.repository }}
+
+jobs:
+  filter:
+    runs-on: ubuntu-latest
+    outputs:
+      changes: ${{ steps.changes.outputs.changes }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            python:
+              - 'docker/python.Dockerfile'
+              - 'docker/repl_server.py'
+              - 'docker/requirements/**'
+            nodejs:
+              - 'docker/nodejs.Dockerfile'
+            go:
+              - 'docker/go.Dockerfile'
+            java:
+              - 'docker/java.Dockerfile'
+            c-cpp:
+              - 'docker/c-cpp.Dockerfile'
+            php:
+              - 'docker/php.Dockerfile'
+            rust:
+              - 'docker/rust.Dockerfile'
+            fortran:
+              - 'docker/fortran.Dockerfile'
+            r:
+              - 'docker/r.Dockerfile'
+            d:
+              - 'docker/d.Dockerfile'
+
+  build-images:
+    needs: filter
+    if: ${{ needs.filter.outputs.changes != '[]' && needs.filter.outputs.changes != '' }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ${{ fromJSON(needs.filter.outputs.changes) }}
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # Image name format: ghcr.io/owner/repo/python
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_BASE }}/${{ matrix.language }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=sha,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push ${{ matrix.language }} image
+        uses: docker/build-push-action@v5
+        with:
+          context: docker
+          file: docker/${{ matrix.language }}.Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')

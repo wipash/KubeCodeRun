@@ -1,0 +1,461 @@
+# Configuration Guide
+
+This document provides comprehensive information about configuring the Code Interpreter API.
+
+## Overview
+
+The Code Interpreter API uses environment-based configuration with sensible defaults. All configuration options can be set via environment variables or a `.env` file.
+
+## Quick Start
+
+1. Copy the example environment file:
+
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Edit `.env` with your specific settings:
+
+   ```bash
+   # At minimum, change the API key
+   API_KEY=your-secure-api-key-here
+   ```
+
+3. Validate your configuration:
+   ```bash
+   python config_manager.py validate
+   ```
+
+## Configuration Sections
+
+### API Configuration
+
+Controls the basic API server settings.
+
+| Variable     | Default   | Description                               |
+| ------------ | --------- | ----------------------------------------- |
+| `API_HOST`   | `0.0.0.0` | Host to bind the API server               |
+| `API_PORT`   | `8000`    | Port for the API server                   |
+| `API_DEBUG`  | `false`   | Enable debug mode (disable in production) |
+| `API_RELOAD` | `false`   | Enable auto-reload for development        |
+
+### SSL/HTTPS Configuration
+
+Configures SSL/TLS support for secure HTTPS connections.
+
+| Variable        | Default | Description                                 |
+| --------------- | ------- | ------------------------------------------- |
+| `ENABLE_HTTPS`  | `false` | Enable HTTPS/SSL support                    |
+| `HTTPS_PORT`    | `443`   | HTTPS server port                           |
+| `SSL_CERT_FILE` | -       | Path to SSL certificate file (.crt or .pem) |
+| `SSL_KEY_FILE`  | -       | Path to SSL private key file (.key)         |
+| `SSL_REDIRECT`  | `false` | Redirect HTTP traffic to HTTPS              |
+| `SSL_CA_CERTS`  | -       | Path to CA certificates file (optional)     |
+
+**HTTPS Setup:**
+
+1. **Generate or obtain SSL certificates**:
+
+   ```bash
+   # For development (self-signed certificate)
+   mkdir ssl
+   openssl req -x509 -newkey rsa:4096 -nodes -out ssl/cert.pem -keyout ssl/key.pem -days 365
+
+   # For production, use certificates from a trusted CA
+   ```
+
+2. **Configure HTTPS in .env**:
+
+   ```bash
+   ENABLE_HTTPS=true
+   HTTPS_PORT=443
+   SSL_CERT_FILE=/app/ssl/cert.pem
+   SSL_KEY_FILE=/app/ssl/key.pem
+   SSL_REDIRECT=true  # Optional: redirect HTTP to HTTPS
+   ```
+
+3. **Deploy with Docker Compose**:
+   ```bash
+   # Make sure SSL certificates are in ./ssl/ directory
+   docker-compose up -d
+   ```
+
+**Security Notes:**
+
+- Use certificates from trusted Certificate Authorities in production
+- Keep private keys secure and never commit them to version control
+- Consider using Let's Encrypt for free SSL certificates
+- Enable `SSL_REDIRECT` to automatically redirect HTTP to HTTPS
+
+### Authentication Configuration
+
+Manages API key authentication and security.
+
+| Variable            | Default        | Description                            |
+| ------------------- | -------------- | -------------------------------------- |
+| `API_KEY`           | `test-api-key` | Primary API key (CHANGE IN PRODUCTION) |
+| `API_KEYS`          | -              | Additional API keys (comma-separated)  |
+| `API_KEY_HEADER`    | `x-api-key`    | HTTP header name for API key           |
+| `API_KEY_CACHE_TTL` | `300`          | API key validation cache TTL (seconds) |
+
+**Security Notes:**
+
+- API keys should be at least 16 characters long
+- Use cryptographically secure random keys in production
+- Consider rotating API keys regularly
+
+### Redis Configuration
+
+Redis is used for session management and caching.
+
+| Variable                       | Default     | Description                                        |
+| ------------------------------ | ----------- | -------------------------------------------------- |
+| `REDIS_HOST`                   | `localhost` | Redis server hostname                              |
+| `REDIS_PORT`                   | `6379`      | Redis server port                                  |
+| `REDIS_PASSWORD`               | -           | Redis password (if required)                       |
+| `REDIS_DB`                     | `0`         | Redis database number                              |
+| `REDIS_URL`                    | -           | Complete Redis URL (overrides individual settings) |
+| `REDIS_MAX_CONNECTIONS`        | `20`        | Maximum connections in pool                        |
+| `REDIS_SOCKET_TIMEOUT`         | `5`         | Socket timeout (seconds)                           |
+| `REDIS_SOCKET_CONNECT_TIMEOUT` | `5`         | Connection timeout (seconds)                       |
+
+**Example Redis URL:**
+
+```
+REDIS_URL=redis://password@localhost:6379/0
+```
+
+### MinIO/S3 Configuration
+
+MinIO provides S3-compatible object storage for files.
+
+| Variable           | Default                  | Description                         |
+| ------------------ | ------------------------ | ----------------------------------- |
+| `MINIO_ENDPOINT`   | `localhost:9000`         | MinIO server endpoint (no protocol) |
+| `MINIO_ACCESS_KEY` | `minioadmin`             | MinIO access key                    |
+| `MINIO_SECRET_KEY` | `minioadmin`             | MinIO secret key                    |
+| `MINIO_SECURE`     | `false`                  | Use HTTPS for MinIO connections     |
+| `MINIO_BUCKET`     | `code-interpreter-files` | Bucket name for file storage        |
+| `MINIO_REGION`     | `us-east-1`              | MinIO region                        |
+
+### Docker Configuration
+
+Docker is used for secure code execution in containers.
+
+| Variable              | Default | Description                                  |
+| --------------------- | ------- | -------------------------------------------- |
+| `DOCKER_BASE_URL`     | -       | Docker daemon URL (auto-detected if not set) |
+| `DOCKER_TIMEOUT`      | `60`    | Docker operation timeout (seconds)           |
+| `DOCKER_NETWORK_MODE` | `none`  | Container network mode                       |
+| `DOCKER_READ_ONLY`    | `true`  | Mount container filesystem as read-only      |
+
+**Security Notes:**
+
+- `DOCKER_NETWORK_MODE=none` provides maximum isolation
+- `DOCKER_READ_ONLY=true` prevents container filesystem modifications
+
+### Resource Limits
+
+#### Execution Limits
+
+| Variable             | Default | Description                           |
+| -------------------- | ------- | ------------------------------------- |
+| `MAX_EXECUTION_TIME` | `30`    | Maximum code execution time (seconds) |
+| `MAX_MEMORY_MB`      | `512`   | Maximum memory per execution (MB)     |
+| `MAX_CPU_QUOTA`      | `50000` | CPU quota (100000 = 1 CPU)            |
+| `MAX_PROCESSES`      | `32`    | Maximum processes per container       |
+| `MAX_OPEN_FILES`     | `1024`  | Maximum open files per container      |
+
+#### File Limits
+
+| Variable                 | Default | Description                              |
+| ------------------------ | ------- | ---------------------------------------- |
+| `MAX_FILE_SIZE_MB`       | `10`    | Maximum individual file size (MB)        |
+| `MAX_TOTAL_FILE_SIZE_MB` | `50`    | Maximum total file size per session (MB) |
+| `MAX_FILES_PER_SESSION`  | `50`    | Maximum files per session                |
+| `MAX_OUTPUT_FILES`       | `10`    | Maximum output files per execution       |
+| `MAX_FILENAME_LENGTH`    | `255`   | Maximum filename length                  |
+
+#### Session Limits
+
+| Variable                    | Default | Description                        |
+| --------------------------- | ------- | ---------------------------------- |
+| `MAX_CONCURRENT_EXECUTIONS` | `10`    | Maximum concurrent code executions |
+| `MAX_SESSIONS_PER_ENTITY`   | `100`   | Maximum sessions per entity        |
+
+### Session Configuration
+
+| Variable                           | Default | Description                  |
+| ---------------------------------- | ------- | ---------------------------- |
+| `SESSION_TTL_HOURS`                | `24`    | Session time-to-live (hours) |
+| `SESSION_CLEANUP_INTERVAL_MINUTES` | `60`    | Cleanup interval (minutes)   |
+| `SESSION_ID_LENGTH`                | `32`    | Session ID length            |
+
+### Container Pool Configuration
+
+Pre-warmed containers significantly reduce execution latency by eliminating cold start time.
+
+| Variable                           | Default | Description                            |
+| ---------------------------------- | ------- | -------------------------------------- |
+| `CONTAINER_POOL_ENABLED`           | `true`  | Enable container pooling               |
+| `CONTAINER_POOL_MIN_SIZE`          | `2`     | Default minimum pool size per language |
+| `CONTAINER_POOL_MAX_SIZE`          | `15`    | Default maximum pool size per language |
+| `CONTAINER_POOL_WARMUP_ON_STARTUP` | `true`  | Pre-warm containers at startup         |
+| `CONTAINER_POOL_PY_MIN`            | `5`     | Minimum Python containers in pool      |
+| `CONTAINER_POOL_PY_MAX`            | `20`    | Maximum Python containers in pool      |
+| `CONTAINER_POOL_JS_MIN`            | `2`     | Minimum JavaScript containers in pool  |
+| `CONTAINER_POOL_JS_MAX`            | `8`     | Maximum JavaScript containers in pool  |
+
+**Note:** Containers are destroyed immediately after execution - there is no TTL-based cleanup. The pool is automatically replenished in the background.
+
+### REPL Configuration (Python Fast Execution)
+
+REPL mode keeps a Python interpreter running inside pooled containers with common libraries pre-imported, reducing execution latency from ~3,500ms to ~20-40ms.
+
+| Variable                            | Default | Description                             |
+| ----------------------------------- | ------- | --------------------------------------- |
+| `REPL_ENABLED`                      | `true`  | Enable pre-warmed Python REPL           |
+| `REPL_WARMUP_TIMEOUT_SECONDS`       | `15`    | Timeout for REPL server to become ready |
+| `REPL_HEALTH_CHECK_TIMEOUT_SECONDS` | `5`     | Timeout for REPL health checks          |
+
+### State Persistence Configuration (Python)
+
+Python sessions can persist variables, functions, and objects across executions using the `session_id` parameter.
+
+| Variable                    | Default | Description                          |
+| --------------------------- | ------- | ------------------------------------ |
+| `STATE_PERSISTENCE_ENABLED` | `true`  | Enable Python state persistence      |
+| `STATE_TTL_SECONDS`         | `7200`  | Redis hot storage TTL (2 hours)      |
+| `STATE_MAX_SIZE_MB`         | `50`    | Maximum serialized state size        |
+| `STATE_CAPTURE_ON_ERROR`    | `false` | Save state even on execution failure |
+
+### State Archival Configuration (Python)
+
+Inactive states are automatically archived to MinIO for long-term storage.
+
+| Variable                               | Default | Description                            |
+| -------------------------------------- | ------- | -------------------------------------- |
+| `STATE_ARCHIVE_ENABLED`                | `true`  | Enable MinIO cold storage archival     |
+| `STATE_ARCHIVE_AFTER_SECONDS`          | `3600`  | Archive after this inactivity (1 hour) |
+| `STATE_ARCHIVE_TTL_DAYS`               | `7`     | Keep archives for this many days       |
+| `STATE_ARCHIVE_CHECK_INTERVAL_SECONDS` | `300`   | Archival check frequency (5 min)       |
+
+### Security Configuration
+
+| Variable                      | Default | Description                             |
+| ----------------------------- | ------- | --------------------------------------- |
+| `ENABLE_NETWORK_ISOLATION`    | `true`  | Enable network isolation for containers |
+| `ENABLE_FILESYSTEM_ISOLATION` | `true`  | Enable filesystem isolation             |
+
+### Logging Configuration
+
+| Variable               | Default | Description                                 |
+| ---------------------- | ------- | ------------------------------------------- |
+| `LOG_LEVEL`            | `INFO`  | Logging level (DEBUG, INFO, WARNING, ERROR) |
+| `LOG_FORMAT`           | `json`  | Log format (json or text)                   |
+| `LOG_FILE`             | -       | Log file path (stdout if not set)           |
+| `LOG_MAX_SIZE_MB`      | `100`   | Maximum log file size (MB)                  |
+| `LOG_BACKUP_COUNT`     | `5`     | Number of log file backups                  |
+| `ENABLE_ACCESS_LOGS`   | `true`  | Enable HTTP access logs                     |
+| `ENABLE_SECURITY_LOGS` | `true`  | Enable security event logs                  |
+
+### Health Check Configuration
+
+| Variable                | Default | Description                     |
+| ----------------------- | ------- | ------------------------------- |
+| `HEALTH_CHECK_INTERVAL` | `30`    | Health check interval (seconds) |
+| `HEALTH_CHECK_TIMEOUT`  | `5`     | Health check timeout (seconds)  |
+
+### Development Configuration
+
+| Variable       | Default | Description                            |
+| -------------- | ------- | -------------------------------------- |
+| `ENABLE_CORS`  | `false` | Enable CORS (for development)          |
+| `CORS_ORIGINS` | -       | Allowed CORS origins (comma-separated) |
+| `ENABLE_DOCS`  | `true`  | Enable API documentation endpoints     |
+
+## Language-Specific Configuration
+
+Each supported programming language has its own configuration for container images and resource multipliers:
+
+### Supported Languages
+
+- **Python** (`py`): `python:3.11-slim`
+- **Node.js** (`js`): `node:18-alpine`
+- **TypeScript** (`ts`): `node:18-alpine`
+- **Go** (`go`): `golang:1.21-alpine`
+- **Java** (`java`): `openjdk:11-jre-slim`
+- **C** (`c`): `gcc:latest`
+- **C++** (`cpp`): `gcc:latest`
+- **PHP** (`php`): `php:8.2-cli-alpine`
+- **Rust** (`rs`): `rust:1.70-slim`
+- **R** (`r`): `r-base:latest`
+- **Fortran** (`f90`): `gcc:latest`
+- **D** (`d`): `dlang2/dmd-ubuntu:latest`
+
+### Custom Language Images
+
+You can override default images using environment variables:
+
+```bash
+LANG_PYTHON_IMAGE=python:3.12-slim
+LANG_NODEJS_IMAGE=node:20-alpine
+LANG_JAVA_IMAGE=openjdk:17-jre-slim
+```
+
+## Configuration Management Tools
+
+### Command Line Tool
+
+Use the configuration management script:
+
+```bash
+# Show configuration summary
+python config_manager.py summary
+
+# Validate configuration
+python config_manager.py validate
+
+# Check security settings
+python config_manager.py security
+
+# Generate complete .env template
+python config_manager.py template
+
+# Export configuration as JSON
+python config_manager.py export
+```
+
+### Programmatic Access
+
+```python
+from src.config import settings
+from src.utils.config_validator import validate_configuration
+
+# Access configuration
+print(f"API Port: {settings.api_port}")
+print(f"Max Memory: {settings.max_memory_mb}MB")
+
+# Validate configuration
+if validate_configuration():
+    print("Configuration is valid")
+```
+
+## Production Deployment Checklist
+
+### Security
+
+- [ ] Change default API key to a secure random value
+- [ ] Enable network isolation (`ENABLE_NETWORK_ISOLATION=true`)
+- [ ] Enable filesystem isolation (`ENABLE_FILESYSTEM_ISOLATION=true`)
+- [ ] Set Docker network mode to `none`
+- [ ] Enable read-only container filesystems
+- [ ] Review and adjust resource limits
+
+### Performance
+
+- [ ] Set appropriate memory limits based on expected workload
+- [ ] Configure Redis connection pooling
+- [ ] Set reasonable execution timeouts
+- [ ] Configure log rotation
+- [ ] Enable REPL mode for Python (`REPL_ENABLED=true`)
+- [ ] Configure container pool sizes based on language usage
+- [ ] Review state persistence TTL settings
+
+### State Persistence (Python)
+
+- [ ] Configure `STATE_TTL_SECONDS` based on session patterns
+- [ ] Set `STATE_MAX_SIZE_MB` limit appropriate for use case
+- [ ] Enable state archival for long-term session resumption
+- [ ] Configure archival TTL (`STATE_ARCHIVE_TTL_DAYS`)
+
+### Monitoring
+
+- [ ] Enable structured logging (`LOG_FORMAT=json`)
+- [ ] Configure log aggregation
+- [ ] Set up health check monitoring
+- [ ] Enable security event logging
+
+### Infrastructure
+
+- [ ] Secure Redis with authentication
+- [ ] Secure MinIO with proper access keys
+- [ ] Configure Docker daemon security
+- [ ] Set up backup for Redis and MinIO data
+
+## Troubleshooting
+
+### Configuration Validation Errors
+
+Run the validation tool to identify issues:
+
+```bash
+python config_manager.py validate
+```
+
+### Common Issues
+
+1. **Redis Connection Failed**
+   - Check Redis server is running
+   - Verify host, port, and credentials
+   - Check network connectivity
+
+2. **MinIO Connection Failed**
+   - Verify MinIO server is accessible
+   - Check access key and secret key
+   - Ensure bucket exists or can be created
+
+3. **Docker Connection Failed**
+   - Verify Docker daemon is running
+   - Check Docker socket permissions
+   - Ensure user has Docker access
+
+4. **Resource Limit Errors**
+   - Check system resources available
+   - Adjust limits based on hardware
+   - Monitor resource usage
+
+### Debug Mode
+
+Enable debug mode for detailed logging:
+
+```bash
+API_DEBUG=true
+LOG_LEVEL=DEBUG
+```
+
+**Warning:** Disable debug mode in production as it may expose sensitive information.
+
+## Environment-Specific Configurations
+
+### Development
+
+```bash
+API_DEBUG=true
+API_RELOAD=true
+ENABLE_CORS=true
+ENABLE_DOCS=true
+LOG_LEVEL=DEBUG
+```
+
+### Testing
+
+```bash
+API_DEBUG=false
+ENABLE_DOCS=true
+LOG_LEVEL=INFO
+MAX_EXECUTION_TIME=10
+MAX_MEMORY_MB=256
+```
+
+### Production
+
+```bash
+API_DEBUG=false
+API_RELOAD=false
+ENABLE_CORS=false
+ENABLE_DOCS=false
+LOG_LEVEL=INFO
+LOG_FORMAT=json
+ENABLE_SECURITY_LOGS=true
+```

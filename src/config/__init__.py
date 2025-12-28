@@ -547,7 +547,7 @@ class Settings(BaseSettings):
             max_memory_mb=self.max_memory_mb,
             max_cpus=self.max_cpus,
             max_cpu_quota=self.max_cpu_quota,
-            max_processes=self.max_processes,
+            max_pids=self.max_pids,
             max_open_files=self.max_open_files,
             max_file_size_mb=self.max_file_size_mb,
             max_total_file_size_mb=self.max_total_file_size_mb,

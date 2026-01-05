@@ -93,3 +93,28 @@ Redis URL
 {{- "redis://redis:6379/0" }}
 {{- end }}
 {{- end }}
+
+{{/*
+Check if Helm-managed secret is needed
+Returns true if any of the following conditions are met:
+- api.existingSecret is not set (API_KEY will be auto-generated)
+- redis.existingSecret is not set (REDIS_URL needs to be generated)
+- minio.existingSecret is not set AND minio.useIAM is false (S3 credentials needed)
+*/}}
+{{- define "librecodeinterpreter.needsHelmSecret" -}}
+{{- if or (not .Values.api.existingSecret) (not .Values.redis.existingSecret) (and (not .Values.minio.existingSecret) (not .Values.minio.useIAM)) }}
+{{- true }}
+{{- end }}
+{{- end }}
+
+{{/*
+Validate MinIO/S3 configuration
+When not using existingSecret or IAM, accessKey and secretKey must be provided.
+*/}}
+{{- define "librecodeinterpreter.validateMinioConfig" -}}
+{{- if and (not .Values.minio.existingSecret) (not .Values.minio.useIAM) }}
+{{- if or (not .Values.minio.accessKey) (not .Values.minio.secretKey) }}
+{{- fail "minio.accessKey and minio.secretKey are required when not using existingSecret or IAM" -}}
+{{- end }}
+{{- end }}
+{{- end }}

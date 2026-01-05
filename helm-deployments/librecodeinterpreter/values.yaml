@@ -94,7 +94,11 @@ affinity: {}
 
 # External Dependencies
 redis:
-  # External Redis URL (required)
+  # Reference an existing Kubernetes Secret containing REDIS_URL
+  # When set, the url/host/port/password/db fields below are ignored
+  # Expected secret key: REDIS_URL (full connection string)
+  existingSecret: ""
+  # External Redis URL (required unless existingSecret is set)
   url: "redis://redis:6379/0"
   # Or specify individual fields
   host: ""
@@ -103,6 +107,10 @@ redis:
   db: 0
 
 minio:
+  # Reference an existing Kubernetes Secret containing S3 credentials
+  # When set, the accessKey/secretKey fields below are ignored
+  # Expected secret keys: MINIO_ACCESS_KEY, MINIO_SECRET_KEY
+  existingSecret: ""
   endpoint: "minio:9000"
   accessKey: ""
   secretKey: ""
@@ -116,6 +124,10 @@ minio:
 
 # API Configuration
 api:
+  # Reference an existing Kubernetes Secret containing API keys
+  # When set, the apiKey/masterApiKey fields below are ignored
+  # Expected secret keys: API_KEY, and optionally MASTER_API_KEY
+  existingSecret: ""
   apiKey: "" # Will be auto-generated if empty
   masterApiKey: "" # For admin operations
   debug: false

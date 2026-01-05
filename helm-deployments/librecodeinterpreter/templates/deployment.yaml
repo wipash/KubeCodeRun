@@ -1,3 +1,4 @@
+{{- include "librecodeinterpreter.validateMinioConfig" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -14,7 +15,7 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
-        {{- if not .Values.secretsStore.enabled }}
+        {{- if and (not .Values.secretsStore.enabled) (include "librecodeinterpreter.needsHelmSecret" .) }}
         checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
         {{- end }}
         {{- with .Values.podAnnotations }}
@@ -74,9 +75,26 @@ spec:
             - secretRef:
                 name: {{ include "librecodeinterpreter.fullname" . }}-aws-secrets
             {{- else }}
+            {{- if include "librecodeinterpreter.needsHelmSecret" . }}
             # Use Helm-managed secrets
             - secretRef:
                 name: {{ include "librecodeinterpreter.fullname" . }}-secrets
+            {{- end }}
+            {{- if .Values.api.existingSecret }}
+            # External secret for API keys (API_KEY, MASTER_API_KEY)
+            - secretRef:
+                name: {{ .Values.api.existingSecret }}
+            {{- end }}
+            {{- if .Values.redis.existingSecret }}
+            # External secret for Redis (REDIS_URL)
+            - secretRef:
+                name: {{ .Values.redis.existingSecret }}
+            {{- end }}
+            {{- if .Values.minio.existingSecret }}
+            # External secret for S3/MinIO credentials (MINIO_ACCESS_KEY, MINIO_SECRET_KEY)
+            - secretRef:
+                name: {{ .Values.minio.existingSecret }}
+            {{- end }}
             {{- end }}
           volumeMounts:
             - name: data

@@ -115,7 +115,18 @@ Code is analyzed for potentially dangerous patterns:
 
 #### Namespace Sharing Security (nsenter)
 
-The sidecar container uses Linux `nsenter` to execute code in the main container's mount namespace. This requires specific pod configuration:
+The sidecar container uses Linux `nsenter` to execute code in the main container's mount namespace. This requires specific pod and image configuration.
+
+**How It Works:**
+
+Linux capabilities for non-root users only populate the *bounding set*, not the *effective/permitted sets*. To make capabilities usable by a non-root user, we use **file capabilities** via `setcap` on the `nsenter` binary in the Docker image:
+
+```dockerfile
+# In sidecar Dockerfile
+RUN setcap 'cap_sys_ptrace,cap_sys_admin,cap_sys_chroot+eip' /usr/bin/nsenter
+```
+
+This grants the nsenter binary the ability to gain these capabilities when executed, even by non-root users.
 
 **Required Pod Settings:**
 ```yaml
@@ -126,9 +137,9 @@ spec:
     securityContext:
       runAsUser: 1000
       runAsNonRoot: true
-      allowPrivilegeEscalation: true  # Required for setns() syscall
+      allowPrivilegeEscalation: true  # Required for file capabilities to be honored
       capabilities:
-        add: ["SYS_PTRACE", "SYS_ADMIN", "SYS_CHROOT"]
+        add: ["SYS_PTRACE", "SYS_ADMIN", "SYS_CHROOT"]  # Must be in bounding set
         drop: ["ALL"]
 ```
 
@@ -140,7 +151,8 @@ spec:
 | `SYS_PTRACE` | Access `/proc/<pid>/ns/` of other processes | Scoped to pod only, not host |
 | `SYS_ADMIN` | Call `setns()` to enter namespaces | Required for namespace entry; scoped to pod |
 | `SYS_CHROOT` | Mount namespace operations | Required for `nsenter -m`; scoped to pod |
-| `allowPrivilegeEscalation` | Permits `setns()` syscall (blocked by `no_new_privs`) | Combined with non-root user and dropped capabilities |
+| `allowPrivilegeEscalation` | Permits file capabilities to elevate process caps | Only nsenter binary can escalate, not arbitrary code |
+| `setcap` on nsenter | Grants caps to specific binary only | Other binaries cannot gain these capabilities |
 
 **Why This Is Secure:**
 
@@ -152,16 +164,19 @@ spec:
 
 4. **No host namespace access**: The capabilities are limited to pod-level process visibility and cannot be used to access host processes or namespaces.
 
-5. **Non-root execution**: Both containers run as non-root (`runAsUser: 1000`). The sidecar requires specific capabilities but does not run as root.
+5. **Non-root execution**: Both containers run as non-root (`runAsUser: 1000`). The sidecar uses file capabilities rather than running as root.
 
 6. **Minimal capabilities**: All capabilities are dropped except the three required for `nsenter` to function.
 
-**Alternative Considered:**
+7. **Binary-specific capabilities**: Only the `nsenter` binary has elevated capabilities via `setcap`. Other processes and binaries in the container cannot gain these capabilities.
 
-Running code directly in the sidecar container was rejected because:
-- Would require installing all language runtimes in the sidecar (bloated image)
-- Would lose the clean separation between executor and runtime
-- Would make per-language resource limits harder to enforce
+**Alternatives Considered:**
+
+1. **Running sidecar as root (UID 0)**: Rejected because running as root is generally less secure, even with minimal capabilities. File capabilities provide the same functionality with a smaller attack surface.
+
+2. **Ambient capabilities (Kubernetes KEP-2763)**: This would allow non-root containers to have effective capabilities without `setcap`, but it's not yet available in Kubernetes. When released, this could simplify the approach.
+
+3. **Running code directly in the sidecar**: Rejected because it would require installing all language runtimes in the sidecar (bloated image), lose the clean separation between executor and runtime, and make per-language resource limits harder to enforce.
 
 #### Pod Hardening (Host Info Protection)
 

@@ -594,35 +594,35 @@ class ExecutionOrchestrator:
     async def _cleanup(self, ctx: ExecutionContext) -> None:
         """Cleanup resources after execution.
 
-        - Destroys the pod in background (non-blocking for faster response)
+        - Returns the pod to the pool for reuse (non-blocking for faster response)
         - Publishes ExecutionCompleted event for metrics
         """
-        # Destroy pod in background for faster response
+        # Return pod to pool in background for faster response
         if ctx.container:
             try:
                 kubernetes_manager = self.execution_service.kubernetes_manager
                 pod_name = (
                     ctx.container.name if hasattr(ctx.container, "name") else "unknown"
                 )
-                logger.debug("Scheduling pod destruction", pod_name=pod_name)
+                logger.debug("Scheduling pod release to pool", pod_name=pod_name)
 
-                # Fire-and-forget: destroy pod in background
-                async def destroy_background():
+                # Fire-and-forget: release pod to pool in background
+                async def release_background():
                     try:
-                        await kubernetes_manager.destroy_pod(ctx.container)
-                        logger.debug("Pod destroyed", pod_name=pod_name)
+                        await kubernetes_manager.release_pod(ctx.container)
+                        logger.debug("Pod released to pool", pod_name=pod_name)
                     except Exception as e:
                         logger.warning(
-                            "Background pod destruction failed",
+                            "Background pod release failed",
                             pod_name=pod_name,
                             error=str(e),
                         )
 
-                asyncio.create_task(destroy_background())
+                asyncio.create_task(release_background())
             except Exception as e:
-                logger.error("Failed to schedule pod destruction", error=str(e))
+                logger.error("Failed to schedule pod release", error=str(e))
         else:
-            logger.debug("No pod in context to destroy")
+            logger.debug("No pod in context to release")
 
         # Publish event for metrics
         try:

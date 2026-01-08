@@ -380,12 +380,12 @@ class PodPool:
                     error=str(e),
                 )
 
-    async def acquire(self, session_id: str, timeout: int = 10) -> Optional[PodHandle]:
+    async def acquire(self, session_id: str, timeout: int = 60) -> Optional[PodHandle]:
         """Acquire a warm pod from the pool.
 
         Args:
             session_id: Session identifier
-            timeout: Maximum wait time
+            timeout: Maximum wait time in seconds (default 60s to allow replenishment)
 
         Returns:
             PodHandle if a pod was acquired, None otherwise

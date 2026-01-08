@@ -109,15 +109,15 @@ class CleanupScheduler:
     async def _on_execution_completed(self, event: ExecutionCompleted):
         """Handle execution completed event.
 
-        With simplified pool, pods are destroyed immediately by orchestrator.
+        Pods are returned to the pool for reuse by the orchestrator.
         This handler just logs the event for metrics purposes.
         """
         session_id = event.session_id
 
-        # Pods are now destroyed immediately after execution
+        # Pods are returned to pool immediately after execution for reuse
         # No deferred cleanup needed for pods
         logger.debug(
-            "Execution completed (pod already destroyed)",
+            "Execution completed (pod returned to pool)",
             session_id=session_id[:12] if session_id else None,
             execution_id=event.execution_id[:8] if event.execution_id else None,
         )

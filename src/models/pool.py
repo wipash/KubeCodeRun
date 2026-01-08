@@ -1,7 +1,7 @@
 """Pod pool data models.
 
-These models track pods in the pool. The pool is stateless with respect
-to sessions - pods are provided fresh and destroyed after each execution.
+These models track pods in the pool. Pods are reused between executions
+to improve performance and reduce resource churn.
 """
 
 from dataclasses import dataclass, field
@@ -14,7 +14,7 @@ class PooledPod:
     """Represents a pod available in the pool.
 
     Pods in the pool are pre-warmed and ready to be used.
-    After use, pods are destroyed (not returned to pool).
+    After use, pods are returned to the pool for reuse.
     """
 
     pod_name: str

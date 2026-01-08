@@ -187,7 +187,7 @@ class KubernetesManager:
             handle = await self._pool_manager.acquire(
                 language,
                 session_id,
-                timeout=10,
+                timeout=60,
             )
             if handle:
                 self._active_handles[session_id] = handle
@@ -282,6 +282,22 @@ class KubernetesManager:
                 capture_state=capture_state,
             )
             return result, None, "job"
+
+    async def release_pod(self, handle: PodHandle):
+        """Release a pod back to the pool for reuse.
+
+        Args:
+            handle: Pod handle to release
+        """
+        if not handle:
+            return
+
+        # Remove from active handles
+        if handle.session_id and handle.session_id in self._active_handles:
+            del self._active_handles[handle.session_id]
+
+        # Return pod to pool for reuse
+        await self._pool_manager.release(handle, destroy=False)
 
     async def destroy_pod(self, handle: PodHandle):
         """Destroy an execution pod.

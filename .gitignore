@@ -197,3 +197,6 @@ config/local.py
 *.db-journal
 *.db-wal
 *.db-shm
+
+# Hatch auto-generated version file
+_version.py

@@ -249,6 +249,12 @@ resourceLimits:
   maxConcurrentExecutions: 10
   maxSessionsPerEntity: 100
 
+# Session Lifecycle Configuration
+sessions:
+  ttlHours: 24
+  cleanupIntervalMinutes: 10
+  enableOrphanMinioCleanup: false
+
 # State Persistence Configuration
 state:
   enabled: true

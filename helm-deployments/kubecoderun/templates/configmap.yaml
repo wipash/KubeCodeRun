@@ -95,6 +95,11 @@ data:
   MAX_CONCURRENT_EXECUTIONS: {{ .Values.resourceLimits.maxConcurrentExecutions | quote }}
   MAX_SESSIONS_PER_ENTITY: {{ .Values.resourceLimits.maxSessionsPerEntity | quote }}
 
+  # Session Lifecycle
+  SESSION_TTL_HOURS: {{ .Values.sessions.ttlHours | quote }}
+  SESSION_CLEANUP_INTERVAL_MINUTES: {{ .Values.sessions.cleanupIntervalMinutes | quote }}
+  ENABLE_ORPHAN_MINIO_CLEANUP: {{ .Values.sessions.enableOrphanMinioCleanup | quote }}
+
   # State Persistence
   STATE_PERSISTENCE_ENABLED: {{ .Values.state.enabled | quote }}
   STATE_TTL_SECONDS: {{ .Values.state.ttlSeconds | quote }}

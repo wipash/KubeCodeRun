@@ -139,6 +139,21 @@ api:
   logLevel: "INFO"
   logFormat: "json"
 
+  # Logging
+  enableAccessLogs: true
+  enableSecurityLogs: true
+  enableDocs: true
+
+  # CORS (for development/specific use cases)
+  cors:
+    enabled: false
+    origins: []
+
+  # Health checks
+  healthCheck:
+    interval: 30
+    timeout: 5
+
 # Execution Configuration
 execution:
   # Namespace for execution pods (defaults to Release.Namespace if empty)

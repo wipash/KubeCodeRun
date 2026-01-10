@@ -12,6 +12,15 @@ data:
   API_DEBUG: {{ .Values.api.debug | quote }}
   LOG_LEVEL: {{ .Values.api.logLevel | quote }}
   LOG_FORMAT: {{ .Values.api.logFormat | quote }}
+  ENABLE_ACCESS_LOGS: {{ .Values.api.enableAccessLogs | quote }}
+  ENABLE_SECURITY_LOGS: {{ .Values.api.enableSecurityLogs | quote }}
+  ENABLE_DOCS: {{ .Values.api.enableDocs | quote }}
+  ENABLE_CORS: {{ .Values.api.cors.enabled | quote }}
+  {{- if .Values.api.cors.origins }}
+  CORS_ORIGINS: {{ .Values.api.cors.origins | join "," | quote }}
+  {{- end }}
+  HEALTH_CHECK_INTERVAL: {{ .Values.api.healthCheck.interval | quote }}
+  HEALTH_CHECK_TIMEOUT: {{ .Values.api.healthCheck.timeout | quote }}
 
   # Kubernetes Configuration
   K8S_NAMESPACE: {{ include "kubecoderun.executionNamespace" . | quote }}

@@ -148,6 +148,11 @@ data:
   BLOCKED_FILE_PATTERNS: {{ .Values.security.blockedFilePatterns | join "," | quote }}
   {{- end }}
 
+  # Network Configuration
+  ENABLE_WAN_ACCESS: {{ .Values.network.wan.enabled | quote }}
+  WAN_NETWORK_NAME: {{ .Values.network.wan.networkName | quote }}
+  WAN_DNS_SERVERS: {{ .Values.network.wan.dnsServers | join "," | quote }}
+
   # MinIO/S3 Configuration
   {{- if not .Values.secretsStore.enabled }}
   # When using secretsStore, these values come from AWS Secrets Manager

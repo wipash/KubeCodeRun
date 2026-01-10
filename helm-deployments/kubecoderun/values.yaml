@@ -318,6 +318,17 @@ security:
   # allowedFileExtensions: []
   # blockedFilePatterns: []
 
+# Network Configuration
+network:
+  # WAN access allows pods to reach the internet but blocks internal networks
+  wan:
+    enabled: false
+    networkName: "kubecoderun-wan"
+    dnsServers:
+      - "8.8.8.8"
+      - "1.1.1.1"
+      - "8.8.4.4"
+
 # RBAC for execution pods
 rbac:
   create: true

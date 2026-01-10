@@ -153,6 +153,11 @@ data:
   WAN_NETWORK_NAME: {{ .Values.network.wan.networkName | quote }}
   WAN_DNS_SERVERS: {{ .Values.network.wan.dnsServers | join "," | quote }}
 
+  # Redis Advanced Configuration
+  REDIS_MAX_CONNECTIONS: {{ .Values.redis.maxConnections | quote }}
+  REDIS_SOCKET_TIMEOUT: {{ .Values.redis.socketTimeout | quote }}
+  REDIS_SOCKET_CONNECT_TIMEOUT: {{ .Values.redis.socketConnectTimeout | quote }}
+
   # MinIO/S3 Configuration
   {{- if not .Values.secretsStore.enabled }}
   # When using secretsStore, these values come from AWS Secrets Manager

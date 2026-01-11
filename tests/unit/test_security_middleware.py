@@ -1,0 +1,506 @@
+"""Unit tests for Security Middleware."""
+
+import time
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from fastapi import HTTPException
+
+from src.middleware.security import RequestLoggingMiddleware, SecurityMiddleware
+
+
+@pytest.fixture
+def mock_app():
+    """Create a mock ASGI app."""
+    return AsyncMock()
+
+
+@pytest.fixture
+def security_middleware(mock_app):
+    """Create a security middleware instance."""
+    with patch("src.middleware.security.settings") as mock_settings:
+        mock_settings.max_file_size_mb = 10
+        middleware = SecurityMiddleware(mock_app)
+        return middleware
+
+
+@pytest.fixture
+def http_scope():
+    """Create a basic HTTP scope."""
+    return {
+        "type": "http",
+        "method": "GET",
+        "path": "/api/v1/test",
+        "query_string": b"",
+        "headers": [],
+        "state": {},
+    }
+
+
+@pytest.fixture
+def mock_receive():
+    """Create a mock receive function."""
+    return AsyncMock()
+
+
+@pytest.fixture
+def mock_send():
+    """Create a mock send function."""
+    return AsyncMock()
+
+
+class TestSecurityMiddlewareInit:
+    """Tests for SecurityMiddleware initialization."""
+
+    def test_init(self, mock_app):
+        """Test middleware initialization."""
+        with patch("src.middleware.security.settings") as mock_settings:
+            mock_settings.max_file_size_mb = 10
+            middleware = SecurityMiddleware(mock_app)
+
+        assert middleware.app is mock_app
+        assert middleware.max_request_size == 10 * 1024 * 1024
+        assert "/health" in middleware.excluded_paths
+
+    def test_excluded_paths(self, security_middleware):
+        """Test excluded paths are set correctly."""
+        assert "/health" in security_middleware.excluded_paths
+        assert "/ready" in security_middleware.excluded_paths
+        assert "/docs" in security_middleware.excluded_paths
+        assert "/openapi.json" in security_middleware.excluded_paths
+
+
+class TestSecurityMiddlewareCall:
+    """Tests for SecurityMiddleware __call__ method."""
+
+    @pytest.mark.asyncio
+    async def test_non_http_scope_passes_through(self, security_middleware, mock_app, mock_receive, mock_send):
+        """Test that non-HTTP requests pass through."""
+        scope = {"type": "websocket"}
+
+        await security_middleware(scope, mock_receive, mock_send)
+
+        mock_app.assert_called_once_with(scope, mock_receive, mock_send)
+
+    @pytest.mark.asyncio
+    async def test_excluded_path_skips_auth(self, security_middleware, mock_app, mock_receive, mock_send):
+        """Test that excluded paths skip authentication."""
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/health",
+            "query_string": b"",
+            "headers": [],
+        }
+
+        await security_middleware(scope, mock_receive, mock_send)
+
+        mock_app.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_options_method_skips_auth(self, security_middleware, mock_app, mock_receive, mock_send):
+        """Test that OPTIONS requests skip authentication."""
+        scope = {
+            "type": "http",
+            "method": "OPTIONS",
+            "path": "/api/v1/exec",
+            "query_string": b"",
+            "headers": [],
+        }
+
+        await security_middleware(scope, mock_receive, mock_send)
+
+        mock_app.assert_called_once()
+
+
+class TestShouldSkipAuth:
+    """Tests for _should_skip_auth method."""
+
+    def test_skip_health_path(self, security_middleware):
+        """Test skip auth for /health path."""
+        request = MagicMock()
+        request.url.path = "/health"
+        request.method = "GET"
+
+        result = security_middleware._should_skip_auth(request)
+
+        assert result is True
+
+    def test_skip_ready_path(self, security_middleware):
+        """Test skip auth for /ready path."""
+        request = MagicMock()
+        request.url.path = "/ready"
+        request.method = "GET"
+
+        result = security_middleware._should_skip_auth(request)
+
+        assert result is True
+
+    def test_skip_docs_path(self, security_middleware):
+        """Test skip auth for /docs path."""
+        request = MagicMock()
+        request.url.path = "/docs"
+        request.method = "GET"
+
+        result = security_middleware._should_skip_auth(request)
+
+        assert result is True
+
+    def test_skip_admin_path(self, security_middleware):
+        """Test skip auth for admin paths."""
+        request = MagicMock()
+        request.url.path = "/api/v1/admin/keys"
+        request.method = "GET"
+
+        result = security_middleware._should_skip_auth(request)
+
+        assert result is True
+
+    def test_skip_admin_dashboard_path(self, security_middleware):
+        """Test skip auth for admin dashboard paths."""
+        request = MagicMock()
+        request.url.path = "/admin-dashboard/metrics"
+        request.method = "GET"
+
+        result = security_middleware._should_skip_auth(request)
+
+        assert result is True
+
+    def test_skip_options_method(self, security_middleware):
+        """Test skip auth for OPTIONS method."""
+        request = MagicMock()
+        request.url.path = "/api/v1/exec"
+        request.method = "OPTIONS"
+
+        result = security_middleware._should_skip_auth(request)
+
+        assert result is True
+
+    def test_no_skip_regular_path(self, security_middleware):
+        """Test no skip for regular paths."""
+        request = MagicMock()
+        request.url.path = "/api/v1/exec"
+        request.method = "POST"
+
+        result = security_middleware._should_skip_auth(request)
+
+        assert result is False
+
+
+class TestExtractApiKey:
+    """Tests for _extract_api_key method."""
+
+    def test_extract_from_x_api_key_header(self, security_middleware):
+        """Test extracting API key from x-api-key header."""
+        request = MagicMock()
+        request.headers.get.side_effect = lambda h: "test-key" if h == "x-api-key" else None
+
+        result = security_middleware._extract_api_key(request)
+
+        assert result == "test-key"
+
+    def test_extract_from_bearer_token(self, security_middleware):
+        """Test extracting API key from Bearer token."""
+        request = MagicMock()
+        request.headers.get.side_effect = lambda h: "Bearer my-token" if h == "authorization" else None
+
+        result = security_middleware._extract_api_key(request)
+
+        assert result == "my-token"
+
+    def test_extract_from_apikey_prefix(self, security_middleware):
+        """Test extracting API key from ApiKey prefix."""
+        request = MagicMock()
+        request.headers.get.side_effect = lambda h: "ApiKey my-key" if h == "authorization" else None
+
+        result = security_middleware._extract_api_key(request)
+
+        assert result == "my-key"
+
+    def test_extract_no_key(self, security_middleware):
+        """Test when no API key is present."""
+        request = MagicMock()
+        request.headers.get.return_value = None
+
+        result = security_middleware._extract_api_key(request)
+
+        assert result is None
+
+
+class TestGetClientIp:
+    """Tests for _get_client_ip method."""
+
+    def test_get_ip_from_x_forwarded_for(self, security_middleware):
+        """Test getting IP from x-forwarded-for header."""
+        request = MagicMock()
+        request.headers.get.side_effect = lambda h: "1.2.3.4, 5.6.7.8" if h == "x-forwarded-for" else None
+
+        result = security_middleware._get_client_ip(request)
+
+        assert result == "1.2.3.4"
+
+    def test_get_ip_from_x_real_ip(self, security_middleware):
+        """Test getting IP from x-real-ip header."""
+        request = MagicMock()
+        request.headers.get.side_effect = lambda h: "10.0.0.1" if h == "x-real-ip" else None
+
+        result = security_middleware._get_client_ip(request)
+
+        assert result == "10.0.0.1"
+
+    def test_get_ip_from_client(self, security_middleware):
+        """Test getting IP from client."""
+        request = MagicMock()
+        request.headers.get.return_value = None
+        request.client.host = "192.168.1.1"
+
+        result = security_middleware._get_client_ip(request)
+
+        assert result == "192.168.1.1"
+
+    def test_get_ip_no_client(self, security_middleware):
+        """Test getting IP when no client is present."""
+        request = MagicMock()
+        request.headers.get.return_value = None
+        request.client = None
+
+        result = security_middleware._get_client_ip(request)
+
+        assert result == "unknown"
+
+
+class TestValidateRequest:
+    """Tests for _validate_request method."""
+
+    @pytest.mark.asyncio
+    async def test_validate_get_request(self, security_middleware):
+        """Test GET requests don't require content type validation."""
+        request = MagicMock()
+        request.method = "GET"
+        request.url.path = "/api/v1/test"
+
+        # Should not raise
+        await security_middleware._validate_request(request)
+
+    @pytest.mark.asyncio
+    async def test_validate_post_json(self, security_middleware):
+        """Test POST with JSON content type is valid."""
+        request = MagicMock()
+        request.method = "POST"
+        request.url.path = "/api/v1/exec"
+        request.headers.get.return_value = "application/json"
+
+        # Should not raise
+        await security_middleware._validate_request(request)
+
+    @pytest.mark.asyncio
+    async def test_validate_post_multipart(self, security_middleware):
+        """Test POST with multipart content type is valid."""
+        request = MagicMock()
+        request.method = "POST"
+        request.url.path = "/api/v1/files"
+        request.headers.get.return_value = "multipart/form-data; boundary=----"
+
+        # Should not raise
+        await security_middleware._validate_request(request)
+
+    @pytest.mark.asyncio
+    async def test_validate_post_invalid_content_type(self, security_middleware):
+        """Test POST with invalid content type raises error."""
+        request = MagicMock()
+        request.method = "POST"
+        request.url.path = "/api/v1/exec"
+        request.headers.get.return_value = "application/xml"
+
+        with pytest.raises(HTTPException) as exc_info:
+            await security_middleware._validate_request(request)
+
+        assert exc_info.value.status_code == 415
+        assert "Unsupported content type" in exc_info.value.detail
+
+    @pytest.mark.asyncio
+    async def test_validate_upload_path_skips_content_type(self, security_middleware):
+        """Test upload path skips content type validation."""
+        request = MagicMock()
+        request.method = "POST"
+        request.url.path = "/upload/file"
+        request.headers.get.return_value = "application/octet-stream"
+
+        # Should not raise
+        await security_middleware._validate_request(request)
+
+    @pytest.mark.asyncio
+    async def test_validate_state_path_skips_content_type(self, security_middleware):
+        """Test state path skips content type validation."""
+        request = MagicMock()
+        request.method = "POST"
+        request.url.path = "/state/session-123"
+        request.headers.get.return_value = "application/octet-stream"
+
+        # Should not raise
+        await security_middleware._validate_request(request)
+
+
+class TestAuthenticateRequest:
+    """Tests for _authenticate_request method."""
+
+    @pytest.mark.asyncio
+    async def test_authenticate_success(self, security_middleware):
+        """Test successful authentication."""
+        request = MagicMock()
+        request.headers.get.side_effect = lambda h: "valid-key" if h == "x-api-key" else None
+        request.client.host = "127.0.0.1"
+        scope = {"state": {}}
+
+        mock_auth_service = MagicMock()
+        mock_auth_service.check_rate_limit = AsyncMock(return_value=True)
+        mock_result = MagicMock()
+        mock_result.is_valid = True
+        mock_result.rate_limit_exceeded = False
+        mock_result.key_hash = "hash123"
+        mock_result.is_env_key = False
+        mock_auth_service.validate_api_key_full = AsyncMock(return_value=mock_result)
+        mock_auth_service.record_usage = AsyncMock()
+
+        with patch("src.middleware.security.get_auth_service", return_value=mock_auth_service):
+            await security_middleware._authenticate_request(request, scope)
+
+        assert scope["state"]["authenticated"] is True
+        assert scope["state"]["api_key"] == "valid-key"
+
+    @pytest.mark.asyncio
+    async def test_authenticate_rate_limited(self, security_middleware):
+        """Test authentication with rate limiting."""
+        request = MagicMock()
+        request.headers.get.side_effect = lambda h: "valid-key" if h == "x-api-key" else None
+        request.client.host = "127.0.0.1"
+        scope = {"state": {}}
+
+        mock_auth_service = MagicMock()
+        mock_auth_service.check_rate_limit = AsyncMock(return_value=False)
+
+        with patch("src.middleware.security.get_auth_service", return_value=mock_auth_service):
+            with pytest.raises(HTTPException) as exc_info:
+                await security_middleware._authenticate_request(request, scope)
+
+        assert exc_info.value.status_code == 429
+
+    @pytest.mark.asyncio
+    async def test_authenticate_invalid_key(self, security_middleware):
+        """Test authentication with invalid key."""
+        request = MagicMock()
+        request.headers.get.side_effect = lambda h: "invalid-key" if h == "x-api-key" else None
+        request.client.host = "127.0.0.1"
+        scope = {"state": {}}
+
+        mock_auth_service = MagicMock()
+        mock_auth_service.check_rate_limit = AsyncMock(return_value=True)
+        mock_result = MagicMock()
+        mock_result.is_valid = False
+        mock_result.error_message = "Invalid key"
+        mock_auth_service.validate_api_key_full = AsyncMock(return_value=mock_result)
+
+        with patch("src.middleware.security.get_auth_service", return_value=mock_auth_service):
+            with pytest.raises(HTTPException) as exc_info:
+                await security_middleware._authenticate_request(request, scope)
+
+        assert exc_info.value.status_code == 401
+
+
+class TestRequestLoggingMiddleware:
+    """Tests for RequestLoggingMiddleware."""
+
+    @pytest.fixture
+    def logging_middleware(self, mock_app):
+        """Create a logging middleware instance."""
+        return RequestLoggingMiddleware(mock_app)
+
+    @pytest.mark.asyncio
+    async def test_non_http_passes_through(self, logging_middleware, mock_app, mock_receive, mock_send):
+        """Test non-HTTP requests pass through."""
+        scope = {"type": "websocket"}
+
+        await logging_middleware(scope, mock_receive, mock_send)
+
+        mock_app.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_logs_request(self, logging_middleware, mock_app, mock_receive, mock_send):
+        """Test that requests are logged."""
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/api/v1/test",
+            "query_string": b"",
+            "headers": [],
+        }
+
+        await logging_middleware(scope, mock_receive, mock_send)
+
+        mock_app.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_health_logged_once(self, logging_middleware, mock_app, mock_receive, mock_send):
+        """Test health endpoint is logged only once."""
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/health",
+            "query_string": b"",
+            "headers": [],
+        }
+
+        # First request - should log
+        await logging_middleware(scope, mock_receive, mock_send)
+        assert logging_middleware.health_logged is True
+
+        # Second request - should skip logging
+        await logging_middleware(scope, mock_receive, mock_send)
+
+    @pytest.mark.asyncio
+    async def test_captures_response_status(self, mock_app, mock_receive):
+        """Test that response status is captured."""
+        logging_middleware = RequestLoggingMiddleware(mock_app)
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/api/v1/test",
+            "query_string": b"",
+            "headers": [],
+        }
+
+        # Track what send receives
+        captured_status = None
+
+        async def mock_send_capturing(message):
+            nonlocal captured_status
+            if message["type"] == "http.response.start":
+                captured_status = message.get("status")
+
+        # Configure mock app to send a response
+        async def app_that_responds(scope, receive, send):
+            await send({"type": "http.response.start", "status": 200, "headers": []})
+            await send({"type": "http.response.body", "body": b""})
+
+        logging_middleware.app = app_that_responds
+
+        await logging_middleware(scope, mock_receive, mock_send_capturing)
+
+    @pytest.mark.asyncio
+    async def test_handles_exception(self, mock_receive, mock_send):
+        """Test that exceptions are logged and re-raised."""
+
+        async def failing_app(scope, receive, send):
+            raise ValueError("Test error")
+
+        logging_middleware = RequestLoggingMiddleware(failing_app)
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/api/v1/test",
+            "query_string": b"",
+            "headers": [],
+        }
+
+        with pytest.raises(ValueError):
+            await logging_middleware(scope, mock_receive, mock_send)

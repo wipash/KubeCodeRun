@@ -160,7 +160,7 @@ data:
   # Network Configuration
   ENABLE_WAN_ACCESS: {{ .Values.network.wan.enabled | quote }}
   WAN_NETWORK_NAME: {{ .Values.network.wan.networkName | quote }}
-  WAN_DNS_SERVERS: {{ .Values.network.wan.dnsServers | join "," | quote }}
+  WAN_DNS_SERVERS: {{ .Values.network.wan.dnsServers | toJson | quote }}
 
   # Redis Advanced Configuration
   REDIS_MAX_CONNECTIONS: {{ .Values.redis.maxConnections | quote }}

@@ -49,6 +49,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure pip and build tools
+# PIP_NO_BUILD_ISOLATION=1: Use pre-installed build tools (setuptools, wheel) instead of
+# downloading fresh copies for each package. This ensures consistent versions across all
+# package builds and avoids compatibility issues with the pinned versions below.
 ENV PIP_NO_BUILD_ISOLATION=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 

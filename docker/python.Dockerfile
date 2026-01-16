@@ -1,23 +1,28 @@
 # syntax=docker/dockerfile:1.4
 # Python execution environment with BuildKit optimizations.
-FROM python:3.13-slim
 
 ARG BUILD_DATE
 ARG VERSION
 ARG VCS_REF
 
-LABEL org.opencontainers.image.title="Code Interpreter Python Environment" \
-      org.opencontainers.image.description="Secure execution environment for Python code" \
-      org.opencontainers.image.version="${VERSION}" \
-      org.opencontainers.image.created="${BUILD_DATE}" \
-      org.opencontainers.image.revision="${VCS_REF}"
+################################
+# Builder stage - install packages with build tools
+################################
+FROM python:3.13-slim-trixie AS builder
 
-# Install common packages for data science and general use
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Install build dependencies and runtime dependencies
+# Build deps are needed for compiling native extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Build tools (not needed in final image)
     gcc \
     g++ \
     make \
     pkg-config \
+    python3-dev \
+    # Development libraries (runtime libs installed in final stage)
     libxml2-dev \
     libxslt-dev \
     libffi-dev \
@@ -34,17 +39,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libwebp-dev \
     tcl8.6-dev \
     tk8.6-dev \
-    python3-tk \
-    python3-dev \
-    poppler-utils \
-    tesseract-ocr \
-    pandoc \
     portaudio19-dev \
-    flac \
-    ffmpeg \
     libpulse-dev \
-    antiword \
-    unrtf \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -95,8 +91,61 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r /tmp/python-new.txt
 
-# Clean up requirements files
-RUN rm -f /tmp/python-*.txt
+################################
+# Final stage - minimal runtime image
+################################
+FROM python:3.13-slim-trixie AS final
+
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="Code Interpreter Python Environment" \
+      org.opencontainers.image.description="Secure execution environment for Python code" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Install ONLY runtime dependencies (no -dev packages, no compilers)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Runtime libraries (counterparts to -dev packages in builder)
+    libxml2 \
+    libxslt1.1 \
+    libffi8 \
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    libssl3 \
+    libjpeg62-turbo \
+    libpng16-16 \
+    libtiff6 \
+    libopenjp2-7 \
+    libfreetype6 \
+    liblcms2-2 \
+    libwebp7 \
+    tcl8.6 \
+    tk8.6 \
+    python3-tk \
+    libportaudio2 \
+    libpulse0 \
+    # External tools needed at runtime
+    poppler-utils \
+    tesseract-ocr \
+    pandoc \
+    ffmpeg \
+    flac \
+    antiword \
+    unrtf \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed Python packages from builder
+COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Create non-root user with explicit UID/GID 1000 to match Kubernetes security context
 RUN groupadd -g 1000 codeuser && useradd -r -u 1000 -g codeuser codeuser
@@ -105,7 +154,7 @@ RUN groupadd -g 1000 codeuser && useradd -r -u 1000 -g codeuser codeuser
 WORKDIR /mnt/data
 
 # Ensure ownership of working directory
-RUN chown -R codeuser:codeuser /mnt/data
+RUN chown codeuser:codeuser /mnt/data
 
 # Switch to non-root user
 USER codeuser
@@ -113,7 +162,8 @@ USER codeuser
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONPATH=/mnt/data
+    PYTHONPATH=/mnt/data \
+    MPLCONFIGDIR=/tmp/matplotlib
 
 # Main container runs sleep infinity, sidecar uses nsenter to execute code
 CMD ["sleep", "infinity"]

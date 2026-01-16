@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2-dev \
     libxt-dev \
     libx11-dev \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Install all R packages in a single layer using Posit Package Manager

@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpulse-dev \
     antiword \
     unrtf \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure pip and build tools

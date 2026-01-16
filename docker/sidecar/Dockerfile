@@ -34,6 +34,7 @@ RUN set -eux; \
       util-linux \
       libcap2-bin; \
     apt-get autoremove -y; \
+    apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 
 # Create non-root user (used when nsenter is not needed)

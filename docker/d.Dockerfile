@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl wget xz-utils git \
       build-essential make binutils \
       ldc \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user (uid:1001) consistent with other images

@@ -21,10 +21,11 @@ COPY requirements/rust-Cargo.toml Cargo.toml
 # Create minimal src/main.rs (cargo init would fail since Cargo.toml exists)
 RUN mkdir -p src && echo 'fn main() {}' > src/main.rs
 
-# Pre-compile crates with cache mounts
+# Fetch crate dependencies into cache
+# cargo fetch downloads dependencies without compiling, which is faster and
+# more reliable for cache warming (no system library dependencies needed)
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/tmp/rust-cache/target \
-    cargo build --release || true
+    cargo fetch
 
 # Clean up the temporary project but keep the cargo cache
 WORKDIR /

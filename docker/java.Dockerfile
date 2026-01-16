@@ -1,6 +1,10 @@
 # syntax=docker/dockerfile:1.4
 # Java execution environment with BuildKit optimizations.
 
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
 ################################
 # Builder stage - download and verify JARs
 ################################
@@ -42,6 +46,16 @@ RUN mkdir -p /build/lib && \
 # Runtime stage - minimal image without download tools
 ################################
 FROM eclipse-temurin:25-jdk
+
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="Code Interpreter Java Environment" \
+      org.opencontainers.image.description="Secure execution environment for Java code" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
 
 # Copy verified JARs from builder
 COPY --from=builder /build/lib /opt/java/lib

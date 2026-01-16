@@ -2,6 +2,16 @@
 # Fortran execution environment with BuildKit optimizations.
 FROM ubuntu:22.04
 
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="Code Interpreter Fortran Environment" \
+      org.opencontainers.image.description="Secure execution environment for Fortran code" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 

@@ -2,6 +2,16 @@
 # R execution environment with BuildKit optimizations.
 FROM r-base:4.3.0
 
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="Code Interpreter R Environment" \
+      org.opencontainers.image.description="Secure execution environment for R code" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
 # Install system dependencies for R packages (including Cairo)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libcurl4-openssl-dev \

@@ -3,6 +3,16 @@
 # Pin to specific version for reproducibility.
 FROM gcc:13-bookworm
 
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="Code Interpreter C/C++ Environment" \
+      org.opencontainers.image.description="Secure execution environment for C/C++ code" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
 # Install essential development tools and libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
     make \

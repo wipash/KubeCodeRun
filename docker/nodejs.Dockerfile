@@ -2,6 +2,16 @@
 # Node.js execution environment with BuildKit optimizations.
 FROM node:25-alpine
 
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="Code Interpreter Node.js Environment" \
+      org.opencontainers.image.description="Secure execution environment for JavaScript/TypeScript code" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
 # Install common build tools
 RUN apk add --no-cache \
     python3 \

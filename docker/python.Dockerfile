@@ -2,6 +2,16 @@
 # Python execution environment with BuildKit optimizations.
 FROM python:3.13-slim
 
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="Code Interpreter Python Environment" \
+      org.opencontainers.image.description="Secure execution environment for Python code" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
 # Install common packages for data science and general use
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \

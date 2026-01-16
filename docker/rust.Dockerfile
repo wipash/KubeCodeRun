@@ -2,6 +2,16 @@
 # Rust execution environment with BuildKit optimizations
 FROM rust:1.92-slim
 
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="Code Interpreter Rust Environment" \
+      org.opencontainers.image.description="Secure execution environment for Rust code" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \

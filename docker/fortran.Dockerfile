@@ -15,11 +15,9 @@ LABEL org.opencontainers.image.title="Code Interpreter Fortran Environment" \
 # Enable pipefail for safer pipe operations
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Prevent interactive prompts during package installation
-ENV DEBIAN_FRONTEND=noninteractive
-
 # Install Fortran compiler and scientific libraries
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     gfortran \
     cmake \
     make \

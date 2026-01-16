@@ -15,7 +15,8 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Install build dependencies and runtime dependencies
 # Build deps are needed for compiling native extensions
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     # Build tools (not needed in final image)
     gcc \
     g++ \
@@ -110,7 +111,8 @@ LABEL org.opencontainers.image.title="Code Interpreter Python Environment" \
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Install ONLY runtime dependencies (no -dev packages, no compilers)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     # Runtime libraries (counterparts to -dev packages in builder)
     libxml2 \
     libxslt1.1 \

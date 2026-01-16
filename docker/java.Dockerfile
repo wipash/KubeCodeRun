@@ -78,7 +78,7 @@ RUN getent group 1000 >/dev/null || groupadd -g 1000 codeuser; \
 WORKDIR /mnt/data
 
 # Ensure ownership of working directory
-RUN chown -R 1000:1000 /mnt/data
+RUN chown 1000:1000 /mnt/data
 
 # Switch to non-root user (use UID to work regardless of username)
 USER 1000

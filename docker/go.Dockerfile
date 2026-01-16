@@ -23,8 +23,8 @@ RUN apk add --no-cache \
 COPY requirements/go.mod /tmp/gosetup/go.mod
 
 # Pre-download common Go packages with cache mount
-WORKDIR /tmp/gosetup
 RUN --mount=type=cache,target=/go/pkg/mod \
+    cd /tmp/gosetup && \
     go mod download && \
     rm -rf /tmp/gosetup
 
@@ -36,7 +36,7 @@ RUN addgroup -g 1000 -S codeuser && \
 WORKDIR /mnt/data
 
 # Ensure ownership of working directory
-RUN chown -R codeuser:codeuser /mnt/data
+RUN chown codeuser:codeuser /mnt/data
 
 # Switch to non-root user
 USER codeuser

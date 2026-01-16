@@ -1,6 +1,33 @@
 # syntax=docker/dockerfile:1.4
 # Node.js execution environment with BuildKit optimizations.
-FROM node:25-alpine
+
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+################################
+# Builder stage - install packages with native addons
+################################
+FROM node:25-alpine AS builder
+
+# Install build tools needed for native addons
+RUN apk add --no-cache \
+    python3 \
+    make \
+    g++
+
+# Copy package list
+COPY requirements/nodejs.txt /tmp/nodejs.txt
+
+# Install packages globally with cache mount
+RUN --mount=type=cache,target=/root/.npm \
+    packages="$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' /tmp/nodejs.txt)" && \
+    if [ -n "$packages" ]; then npm install -g $packages; fi
+
+################################
+# Final stage - minimal runtime image
+################################
+FROM node:25-alpine AS final
 
 ARG BUILD_DATE
 ARG VERSION
@@ -12,23 +39,12 @@ LABEL org.opencontainers.image.title="Code Interpreter Node.js Environment" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}"
 
-# Install common build tools
-RUN apk add --no-cache \
-    python3 \
-    make \
-    g++ \
-    git
+# Install only runtime dependencies (git for npm operations)
+RUN apk add --no-cache git
 
-# Copy package list
-COPY requirements/nodejs.txt /tmp/nodejs.txt
-
-# Install packages with cache mount
-RUN --mount=type=cache,target=/root/.npm \
-    packages="$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' /tmp/nodejs.txt)" && \
-    if [ -n "$packages" ]; then npm install -g $packages; fi
-
-# Clean up
-RUN rm -f /tmp/nodejs.txt
+# Copy pre-installed global packages from builder
+COPY --from=builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Create non-root user with UID/GID 1000 to match Kubernetes security context
 # Handle case where UID/GID 1000 already exists in base image (e.g., 'node' user)
@@ -44,7 +60,7 @@ RUN set -eu; \
 WORKDIR /mnt/data
 
 # Ensure ownership of working directory
-RUN chown -R 1000:1000 /mnt/data
+RUN chown 1000:1000 /mnt/data
 
 # Switch to non-root user (use UID to work regardless of username)
 USER 1000

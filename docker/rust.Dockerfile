@@ -50,7 +50,7 @@ RUN groupadd -g 1000 codeuser && \
 
 # Set working directory and ensure ownership
 WORKDIR /mnt/data
-RUN chown -R codeuser:codeuser /mnt/data
+RUN chown codeuser:codeuser /mnt/data
 
 # Switch to non-root user
 USER codeuser

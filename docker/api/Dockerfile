@@ -90,9 +90,21 @@ ENV PYTHONPATH=/app \
 
 # Health check - try HTTPS first, then common HTTP ports
 HEALTHCHECK --interval=30s --timeout=15s --start-period=10s --retries=3 \
-    CMD python -c 'import ssl,urllib.request; urllib.request.urlopen("https://localhost:443/health", context=ssl._create_unverified_context(), timeout=10).read()' 2>/dev/null || \
-        python -c 'import urllib.request; urllib.request.urlopen("http://localhost:8000/health", timeout=10).read()' 2>/dev/null || \
-        python -c 'import urllib.request; urllib.request.urlopen("http://localhost:80/health", timeout=10).read()' || exit 1
+    CMD ["python", "-c", "\
+import ssl, sys, urllib.request\n\
+urls = [\n\
+    ('https://localhost:443/health', ssl._create_unverified_context()),\n\
+    ('http://localhost:8000/health', None),\n\
+    ('http://localhost:80/health', None),\n\
+]\n\
+for url, ctx in urls:\n\
+    try:\n\
+        urllib.request.urlopen(url, context=ctx, timeout=10).read()\n\
+        sys.exit(0)\n\
+    except Exception:\n\
+        pass\n\
+sys.exit(1)\n\
+"]
 
 # Expose ports
 EXPOSE 8000 443

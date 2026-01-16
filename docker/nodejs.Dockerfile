@@ -13,30 +13,30 @@ RUN apk add --no-cache \
 COPY requirements/nodejs.txt /tmp/nodejs.txt
 
 # Install packages with cache mount
-# Read packages from file and install globally
 RUN --mount=type=cache,target=/root/.npm \
-    cat /tmp/nodejs.txt | grep -v '^#' | grep -v '^$' | xargs npm install -g
+    grep -vE '^(#|$)' /tmp/nodejs.txt | xargs npm install -g
 
 # Clean up
 RUN rm -f /tmp/nodejs.txt
 
 # Create non-root user with UID/GID 1000 to match Kubernetes security context
-RUN addgroup -g 1000 -S codeuser && \
-    adduser -S codeuser -u 1000 -G codeuser
+# Handle case where UID/GID 1000 already exists in base image (e.g., 'node' user)
+RUN getent group 1000 >/dev/null || addgroup -g 1000 -S codeuser; \
+    getent passwd 1000 >/dev/null || adduser -S codeuser -u 1000 -G "$(getent group 1000 | cut -d: -f1)"
 
 # Set working directory
 WORKDIR /mnt/data
 
 # Ensure ownership of working directory
-RUN chown -R codeuser:codeuser /mnt/data
+RUN chown -R 1000:1000 /mnt/data
 
-# Switch to non-root user
-USER codeuser
+# Switch to non-root user (use UID to work regardless of username)
+USER 1000
 
 # Set environment variables
 ENV NODE_ENV=sandbox \
     NODE_PATH=/usr/local/lib/node_modules
 
 # Default command with sanitized environment
-ENTRYPOINT ["/usr/bin/env","-i","PATH=/usr/local/bin:/usr/bin:/bin","HOME=/tmp","TMPDIR=/tmp","NODE_PATH=/usr/local/lib/node_modules"]
+ENTRYPOINT ["/usr/bin/env","-i","PATH=/usr/local/bin:/usr/bin:/bin","HOME=/tmp","TMPDIR=/tmp","NODE_ENV=sandbox","NODE_PATH=/usr/local/lib/node_modules"]
 CMD ["node"]

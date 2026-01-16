@@ -26,7 +26,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     liblapack-dev \
     libnetcdf-dev \
     libhdf5-dev \
-    build-essential \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

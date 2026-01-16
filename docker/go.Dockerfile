@@ -13,10 +13,10 @@ RUN apk add --no-cache \
 COPY requirements/go.mod /tmp/gosetup/go.mod
 
 # Pre-download common Go packages with cache mount
+WORKDIR /tmp/gosetup
 RUN --mount=type=cache,target=/go/pkg/mod \
-    cd /tmp/gosetup && \
     go mod download && \
-    cd / && rm -rf /tmp/gosetup
+    rm -rf /tmp/gosetup
 
 # Create non-root user with UID/GID 1000 to match Kubernetes security context
 RUN addgroup -g 1000 -S codeuser && \

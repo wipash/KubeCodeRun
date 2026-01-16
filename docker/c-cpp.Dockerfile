@@ -23,9 +23,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN groupadd -g 1001 codeuser && \
-    useradd -r -u 1001 -g codeuser codeuser
+# Create non-root user with UID/GID 1000 to match Kubernetes security context
+RUN groupadd -g 1000 codeuser && \
+    useradd -r -u 1000 -g codeuser codeuser
 
 # Set working directory and ensure ownership
 WORKDIR /mnt/data

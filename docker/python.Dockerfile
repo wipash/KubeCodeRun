@@ -85,8 +85,8 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 # Clean up requirements files
 RUN rm -f /tmp/python-*.txt
 
-# Create non-root user
-RUN groupadd -r codeuser && useradd -r -g codeuser codeuser
+# Create non-root user with explicit UID/GID 1000 to match Kubernetes security context
+RUN groupadd -g 1000 codeuser && useradd -r -u 1000 -g codeuser codeuser
 
 # Set working directory
 WORKDIR /mnt/data

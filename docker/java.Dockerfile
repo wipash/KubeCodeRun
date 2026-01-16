@@ -40,8 +40,8 @@ RUN cd /opt/java/lib && \
     # NEW: Joda-Time
     wget -q https://repo1.maven.org/maven2/joda-time/joda-time/2.12.5/joda-time-2.12.5.jar
 
-# Create non-root user
-RUN groupadd -r codeuser && useradd -r -g codeuser codeuser
+# Create non-root user with explicit UID/GID 1000 to match Kubernetes security context
+RUN groupadd -g 1000 codeuser && useradd -r -u 1000 -g codeuser codeuser
 
 # Set working directory
 WORKDIR /mnt/data

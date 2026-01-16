@@ -24,9 +24,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Composer
 RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
-# Create non-root user
-RUN groupadd -g 1001 codeuser && \
-    useradd -r -u 1001 -g codeuser codeuser
+# Create non-root user with UID/GID 1000 to match Kubernetes security context
+RUN groupadd -g 1000 codeuser && \
+    useradd -r -u 1000 -g codeuser codeuser
 
 # Create global composer directory and set permissions
 RUN mkdir -p /opt/composer/global && \
@@ -39,7 +39,7 @@ USER codeuser
 ENV COMPOSER_HOME=/opt/composer/global
 
 # Pre-install PHP packages globally with cache mount
-RUN --mount=type=cache,target=/opt/composer/global/cache,uid=1001,gid=1001 \
+RUN --mount=type=cache,target=/opt/composer/global/cache,uid=1000,gid=1000 \
     composer global require \
     league/csv \
     phpoffice/phpspreadsheet \

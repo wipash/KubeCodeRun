@@ -20,9 +20,9 @@ RUN --mount=type=cache,target=/root/.npm \
 # Clean up
 RUN rm -f /tmp/nodejs.txt
 
-# Create non-root user
-RUN addgroup -g 1001 -S codeuser && \
-    adduser -S codeuser -u 1001 -G codeuser
+# Create non-root user with UID/GID 1000 to match Kubernetes security context
+RUN addgroup -g 1000 -S codeuser && \
+    adduser -S codeuser -u 1000 -G codeuser
 
 # Set working directory
 WORKDIR /mnt/data

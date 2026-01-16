@@ -20,13 +20,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user (uid:1001) consistent with other images
-RUN useradd -m -u 1001 runner && mkdir -p /mnt/data && chown -R runner:runner /mnt/data
+# Create non-root user with UID/GID 1000 to match Kubernetes security context
+RUN groupadd -g 1000 codeuser && \
+    useradd -r -u 1000 -g codeuser codeuser && \
+    mkdir -p /mnt/data && chown -R codeuser:codeuser /mnt/data
 
 WORKDIR /mnt/data
 
 # Switch to non-root user
-USER 1001:1001
+USER codeuser
 
 # Default command with sanitized environment
 ENTRYPOINT ["/usr/bin/env","-i","PATH=/usr/local/bin:/usr/bin:/bin","HOME=/tmp","TMPDIR=/tmp"]

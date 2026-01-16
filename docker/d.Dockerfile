@@ -15,7 +15,7 @@ LABEL org.opencontainers.image.title="Code Interpreter D Environment" \
 # Install toolchain (ldc2) and basics; works on amd64 and arm64
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl wget xz-utils git \
-      build-essential make binutils \
+      build-essential binutils \
       ldc \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*

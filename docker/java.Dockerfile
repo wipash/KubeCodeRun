@@ -21,18 +21,21 @@ WORKDIR /build
 COPY requirements/java-deps.txt /build/java-deps.txt
 
 # Download JARs and verify SHA-256 checksums
-RUN mkdir -p /build/lib && \
+RUN set -eux; \
+    mkdir -p /build/lib; \
     while IFS= read -r line; do \
         # Skip comments and blank lines
         case "$line" in \
             \#*|"") continue ;; \
         esac; \
-        url=$(echo "$line" | awk '{print $1}'); \
-        expected_sha=$(echo "$line" | awk '{print $2}'); \
-        filename=$(basename "$url"); \
+        set -- $line; \
+        url=$1; \
+        expected_sha=$2; \
+        filename=${url##*/}; \
         echo "Downloading $filename..."; \
         wget -q -O "/build/lib/$filename" "$url"; \
-        actual_sha=$(sha256sum "/build/lib/$filename" | awk '{print $1}'); \
+        actual_sha="$(sha256sum "/build/lib/$filename")"; \
+        actual_sha="${actual_sha%% *}"; \
         if [ "$actual_sha" != "$expected_sha" ]; then \
             echo "ERROR: Checksum mismatch for $filename"; \
             echo "  Expected: $expected_sha"; \

@@ -24,15 +24,21 @@ COPY requirements/nodejs.txt /tmp/nodejs.txt
 
 # Install packages with cache mount
 RUN --mount=type=cache,target=/root/.npm \
-    grep -vE '^(#|$)' /tmp/nodejs.txt | xargs npm install -g
+    packages="$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' /tmp/nodejs.txt)" && \
+    if [ -n "$packages" ]; then npm install -g $packages; fi
 
 # Clean up
 RUN rm -f /tmp/nodejs.txt
 
 # Create non-root user with UID/GID 1000 to match Kubernetes security context
 # Handle case where UID/GID 1000 already exists in base image (e.g., 'node' user)
-RUN getent group 1000 >/dev/null || addgroup -g 1000 -S codeuser; \
-    getent passwd 1000 >/dev/null || adduser -S codeuser -u 1000 -G "$(getent group 1000 | cut -d: -f1)"
+RUN set -eu; \
+    getent group 1000 >/dev/null || addgroup -g 1000 -S codeuser; \
+    if ! getent passwd 1000 >/dev/null; then \
+        group_name="$(getent group 1000)"; \
+        group_name="${group_name%%:*}"; \
+        adduser -S codeuser -u 1000 -G "$group_name"; \
+    fi
 
 # Set working directory
 WORKDIR /mnt/data

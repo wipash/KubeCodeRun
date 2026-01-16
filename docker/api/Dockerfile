@@ -1,5 +1,5 @@
-# syntax=docker/dockerfile:1
-# Keep this syntax directive! It's used to enable Docker BuildKit
+# syntax=docker/dockerfile:1.4
+# BuildKit syntax for cache mounts and other optimizations
 
 ################################
 # Builder STAGE

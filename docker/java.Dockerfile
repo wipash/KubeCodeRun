@@ -1,44 +1,50 @@
 # syntax=docker/dockerfile:1.4
 # Java execution environment with BuildKit optimizations.
-FROM eclipse-temurin:25-jdk
 
-# Install common tools
+################################
+# Builder stage - download and verify JARs
+################################
+FROM eclipse-temurin:25-jdk AS builder
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
     wget \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Create library directory
-RUN mkdir -p /opt/java/lib
+WORKDIR /build
 
-# Download all JARs in a single layer (reduces layers, faster builds)
-RUN cd /opt/java/lib && \
-    # Apache Commons
-    wget -q https://repo1.maven.org/maven2/org/apache/commons/commons-csv/1.10.0/commons-csv-1.10.0.jar && \
-    wget -q https://repo1.maven.org/maven2/org/apache/commons/commons-lang3/3.14.0/commons-lang3-3.14.0.jar && \
-    wget -q https://repo1.maven.org/maven2/org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar && \
-    wget -q https://repo1.maven.org/maven2/org/apache/commons/commons-collections4/4.4/commons-collections4-4.4.jar && \
-    wget -q https://repo1.maven.org/maven2/org/apache/commons/commons-compress/1.25.0/commons-compress-1.25.0.jar && \
-    wget -q https://repo1.maven.org/maven2/org/apache/commons/commons-text/1.11.0/commons-text-1.11.0.jar && \
-    # Jackson JSON
-    wget -q https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-core/2.16.0/jackson-core-2.16.0.jar && \
-    wget -q https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.16.0/jackson-databind-2.16.0.jar && \
-    wget -q https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.16.0/jackson-annotations-2.16.0.jar && \
-    # Apache POI (Excel)
-    wget -q https://repo1.maven.org/maven2/org/apache/poi/poi/5.2.5/poi-5.2.5.jar && \
-    wget -q https://repo1.maven.org/maven2/org/apache/poi/poi-ooxml/5.2.5/poi-ooxml-5.2.5.jar && \
-    wget -q https://repo1.maven.org/maven2/org/apache/poi/poi-ooxml-lite/5.2.5/poi-ooxml-lite-5.2.5.jar && \
-    wget -q https://repo1.maven.org/maven2/org/apache/xmlbeans/xmlbeans/5.2.0/xmlbeans-5.2.0.jar && \
-    # Apache PDFBox
-    wget -q https://repo1.maven.org/maven2/org/apache/pdfbox/pdfbox/3.0.1/pdfbox-3.0.1.jar && \
-    wget -q https://repo1.maven.org/maven2/org/apache/pdfbox/fontbox/3.0.1/fontbox-3.0.1.jar && \
-    # Google Guava
-    wget -q https://repo1.maven.org/maven2/com/google/guava/guava/33.0.0-jre/guava-33.0.0-jre.jar && \
-    # NEW: Gson (alternative JSON)
-    wget -q https://repo1.maven.org/maven2/com/google/code/gson/gson/2.10.1/gson-2.10.1.jar && \
-    # NEW: Joda-Time
-    wget -q https://repo1.maven.org/maven2/joda-time/joda-time/2.12.5/joda-time-2.12.5.jar
+# Copy dependency manifest with checksums
+COPY requirements/java-deps.txt /build/java-deps.txt
+
+# Download JARs and verify SHA-256 checksums
+RUN mkdir -p /build/lib && \
+    while IFS= read -r line; do \
+        # Skip comments and blank lines
+        case "$line" in \
+            \#*|"") continue ;; \
+        esac; \
+        url=$(echo "$line" | awk '{print $1}'); \
+        expected_sha=$(echo "$line" | awk '{print $2}'); \
+        filename=$(basename "$url"); \
+        echo "Downloading $filename..."; \
+        wget -q -O "/build/lib/$filename" "$url"; \
+        actual_sha=$(sha256sum "/build/lib/$filename" | awk '{print $1}'); \
+        if [ "$actual_sha" != "$expected_sha" ]; then \
+            echo "ERROR: Checksum mismatch for $filename"; \
+            echo "  Expected: $expected_sha"; \
+            echo "  Actual:   $actual_sha"; \
+            exit 1; \
+        fi; \
+        echo "  Verified: $filename"; \
+    done < /build/java-deps.txt
+
+################################
+# Runtime stage - minimal image without download tools
+################################
+FROM eclipse-temurin:25-jdk
+
+# Copy verified JARs from builder
+COPY --from=builder /build/lib /opt/java/lib
 
 # Create non-root user with explicit UID/GID 1000 to match Kubernetes security context
 RUN groupadd -g 1000 codeuser && useradd -r -u 1000 -g codeuser codeuser

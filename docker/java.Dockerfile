@@ -47,16 +47,18 @@ FROM eclipse-temurin:25-jdk
 COPY --from=builder /build/lib /opt/java/lib
 
 # Create non-root user with explicit UID/GID 1000 to match Kubernetes security context
-RUN groupadd -g 1000 codeuser && useradd -r -u 1000 -g codeuser codeuser
+# Handle case where UID/GID 1000 already exists in base image
+RUN getent group 1000 >/dev/null || groupadd -g 1000 codeuser && \
+    id -u 1000 >/dev/null 2>&1 || useradd -r -u 1000 -g 1000 codeuser
 
 # Set working directory
 WORKDIR /mnt/data
 
 # Ensure ownership of working directory
-RUN chown -R codeuser:codeuser /mnt/data
+RUN chown -R 1000:1000 /mnt/data
 
-# Switch to non-root user
-USER codeuser
+# Switch to non-root user (use UID to work regardless of username)
+USER 1000
 
 # Set environment variables with updated CLASSPATH
 ENV JAVA_OPTS="-Xmx512m -Xms128m" \

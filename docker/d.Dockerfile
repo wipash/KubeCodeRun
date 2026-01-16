@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.4
 # D execution environment with BuildKit optimizations.
-FROM ubuntu:22.04
+FROM debian:trixie-slim
 
 ARG BUILD_DATE
 ARG VERSION
@@ -12,10 +12,17 @@ LABEL org.opencontainers.image.title="Code Interpreter D Environment" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}"
 
-# Install toolchain (ldc2) and basics; works on amd64 and arm64
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install toolchain (ldc2) and basics
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl wget xz-utils git \
-      build-essential binutils \
+      ca-certificates \
+      git \
+      build-essential \
       ldc \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
@@ -23,7 +30,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Create non-root user with UID/GID 1000 to match Kubernetes security context
 RUN groupadd -g 1000 codeuser && \
     useradd -r -u 1000 -g codeuser codeuser && \
-    mkdir -p /mnt/data && chown -R codeuser:codeuser /mnt/data
+    mkdir -p /mnt/data && chown codeuser:codeuser /mnt/data
 
 WORKDIR /mnt/data
 

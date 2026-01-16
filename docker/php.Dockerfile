@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.4
 # PHP execution environment with BuildKit optimizations.
-FROM php:8.2-cli
+FROM php:8.4-cli-trixie
 
 ARG BUILD_DATE
 ARG VERSION
@@ -11,6 +11,9 @@ LABEL org.opencontainers.image.title="Code Interpreter PHP Environment" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}"
+
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Install system dependencies and PHP extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \

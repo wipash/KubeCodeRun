@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.4
 # Fortran execution environment with BuildKit optimizations.
-FROM ubuntu:22.04
+FROM debian:trixie-slim
 
 ARG BUILD_DATE
 ARG VERSION
@@ -12,16 +12,17 @@ LABEL org.opencontainers.image.title="Code Interpreter Fortran Environment" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}"
 
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install system dependencies and Fortran compiler
+# Install Fortran compiler and scientific libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gfortran-12 \
-    gcc \
-    g++ \
-    make \
+    gfortran \
     cmake \
+    make \
     libblas-dev \
     liblapack-dev \
     libnetcdf-dev \
@@ -29,17 +30,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Set gfortran-12 as the default fortran compiler
-RUN update-alternatives --install /usr/bin/gfortran gfortran /usr/bin/gfortran-12 100 \
-    && update-alternatives --install /usr/bin/f95 f95 /usr/bin/gfortran-12 100
-
 # Create non-root user with UID/GID 1000 to match Kubernetes security context
 RUN groupadd -g 1000 codeuser && \
     useradd -r -u 1000 -g codeuser codeuser
 
 # Set working directory and ensure ownership
 WORKDIR /mnt/data
-RUN chown -R codeuser:codeuser /mnt/data
+RUN chown codeuser:codeuser /mnt/data
 
 # Switch to non-root user
 USER codeuser

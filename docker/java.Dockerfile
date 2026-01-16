@@ -10,6 +10,9 @@ ARG VCS_REF
 ################################
 FROM eclipse-temurin:25-jdk AS builder
 
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     && apt-get clean \
@@ -59,6 +62,9 @@ LABEL org.opencontainers.image.title="Code Interpreter Java Environment" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}"
+
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Copy verified JARs from builder
 COPY --from=builder /build/lib /opt/java/lib

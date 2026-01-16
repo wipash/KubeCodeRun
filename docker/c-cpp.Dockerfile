@@ -1,7 +1,6 @@
 # syntax=docker/dockerfile:1.4
 # C/C++ execution environment with BuildKit optimizations
-# Pin to specific version for reproducibility.
-FROM gcc:13-bookworm
+FROM debian:trixie-slim
 
 ARG BUILD_DATE
 ARG VERSION
@@ -13,8 +12,16 @@ LABEL org.opencontainers.image.title="Code Interpreter C/C++ Environment" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}"
 
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Install essential development tools and libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
     make \
     cmake \
     # Math and science libraries
@@ -39,7 +46,7 @@ RUN groupadd -g 1000 codeuser && \
 
 # Set working directory and ensure ownership
 WORKDIR /mnt/data
-RUN chown -R codeuser:codeuser /mnt/data
+RUN chown codeuser:codeuser /mnt/data
 
 # Switch to non-root user
 USER codeuser

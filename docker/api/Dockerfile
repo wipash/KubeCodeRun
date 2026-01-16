@@ -57,8 +57,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN set -eux; \
     apt-get update; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      catatonit \
-      curl; \
+      catatonit; \
     apt-get autoremove -y; \
     rm -rf /var/lib/apt/lists/*
 
@@ -70,14 +69,16 @@ RUN groupadd -r -g 1000 appuser && useradd -r -u 1000 -g appuser -d /app -s /usr
 WORKDIR /app
 
 # Copy the application from the builder
-COPY --from=builder --chown=appuser:appuser /app /app
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
+COPY --from=builder --chown=appuser:appuser /app/src /app/src
+COPY --from=builder --chown=appuser:appuser /app/dashboard /app/dashboard
 
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
 
 # Create necessary directories with correct ownership
 RUN mkdir -p /app/logs /app/data /app/ssl && \
-    chown -R appuser:appuser /app
+    chown appuser:appuser /app /app/logs /app/data /app/ssl
 
 # Switch to non-root user
 USER appuser
@@ -89,7 +90,9 @@ ENV PYTHONPATH=/app \
 
 # Health check - try HTTPS first, then common HTTP ports
 HEALTHCHECK --interval=30s --timeout=15s --start-period=10s --retries=3 \
-    CMD curl -f -k https://localhost:443/health 2>/dev/null || curl -f http://localhost:8000/health 2>/dev/null || curl -f http://localhost:80/health || exit 1
+    CMD python -c 'import ssl,urllib.request; urllib.request.urlopen("https://localhost:443/health", context=ssl._create_unverified_context(), timeout=10).read()' 2>/dev/null || \
+        python -c 'import urllib.request; urllib.request.urlopen("http://localhost:8000/health", timeout=10).read()' 2>/dev/null || \
+        python -c 'import urllib.request; urllib.request.urlopen("http://localhost:80/health", timeout=10).read()' || exit 1
 
 # Expose ports
 EXPOSE 8000 443

@@ -84,15 +84,20 @@ RUN apt-get update && \
 COPY --from=builder /usr/local/lib/R/site-library /usr/local/lib/R/site-library
 
 # Create non-root user with UID/GID 1000 to match Kubernetes security context
-RUN groupadd -g 1000 codeuser && \
-    useradd -r -u 1000 -g codeuser codeuser
+# Handle case where UID/GID 1000 already exists in base image (e.g., 'docker' user in r-base)
+RUN set -eu; \
+    getent group 1000 >/dev/null || groupadd -g 1000 codeuser; \
+    if ! getent passwd 1000 >/dev/null; then \
+        group_name="$(getent group 1000 | cut -d: -f1)"; \
+        useradd -r -u 1000 -g "$group_name" codeuser; \
+    fi
 
 # Set working directory and ensure ownership
 WORKDIR /mnt/data
-RUN chown codeuser:codeuser /mnt/data
+RUN chown 1000:1000 /mnt/data
 
-# Switch to non-root user
-USER codeuser
+# Switch to non-root user (use UID to work regardless of username)
+USER 1000
 
 # Set environment variables
 ENV R_LIBS_USER=/usr/local/lib/R/site-library

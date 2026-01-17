@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:1
 # Python execution environment with BuildKit optimizations.
 
 ARG BUILD_DATE
@@ -101,7 +101,7 @@ ARG BUILD_DATE
 ARG VERSION
 ARG VCS_REF
 
-LABEL org.opencontainers.image.title="Code Interpreter Python Environment" \
+LABEL org.opencontainers.image.title="KubeCodeRun Python Environment" \
       org.opencontainers.image.description="Secure execution environment for Python code" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \

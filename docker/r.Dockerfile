@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:1
 # R execution environment with BuildKit optimizations.
 
 ARG BUILD_DATE
@@ -52,7 +52,7 @@ ARG BUILD_DATE
 ARG VERSION
 ARG VCS_REF
 
-LABEL org.opencontainers.image.title="Code Interpreter R Environment" \
+LABEL org.opencontainers.image.title="KubeCodeRun R Environment" \
       org.opencontainers.image.description="Secure execution environment for R code" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \

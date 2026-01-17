@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:1
 # Java execution environment with BuildKit optimizations.
 
 ARG BUILD_DATE
@@ -57,7 +57,7 @@ ARG BUILD_DATE
 ARG VERSION
 ARG VCS_REF
 
-LABEL org.opencontainers.image.title="Code Interpreter Java Environment" \
+LABEL org.opencontainers.image.title="KubeCodeRun Java Environment" \
       org.opencontainers.image.description="Secure execution environment for Java code" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \

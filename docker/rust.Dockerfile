@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:1
 # Rust execution environment with BuildKit optimizations
 FROM rust:1.92.0-slim-trixie
 
@@ -6,7 +6,7 @@ ARG BUILD_DATE
 ARG VERSION
 ARG VCS_REF
 
-LABEL org.opencontainers.image.title="Code Interpreter Rust Environment" \
+LABEL org.opencontainers.image.title="KubeCodeRun Rust Environment" \
       org.opencontainers.image.description="Secure execution environment for Rust code" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \

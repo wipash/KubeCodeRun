@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:1
 # PHP execution environment with BuildKit optimizations.
 
 ARG BUILD_DATE
@@ -75,7 +75,7 @@ ARG BUILD_DATE
 ARG VERSION
 ARG VCS_REF
 
-LABEL org.opencontainers.image.title="Code Interpreter PHP Environment" \
+LABEL org.opencontainers.image.title="KubeCodeRun PHP Environment" \
       org.opencontainers.image.description="Secure execution environment for PHP code" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \

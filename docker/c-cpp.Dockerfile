@@ -1,12 +1,12 @@
-# syntax=docker/dockerfile:1.4
-# C/C++ execution environment with BuildKit optimizations
+# syntax=docker/dockerfile:1
+# C/C++ execution environment
 FROM debian:trixie-slim
 
 ARG BUILD_DATE
 ARG VERSION
 ARG VCS_REF
 
-LABEL org.opencontainers.image.title="Code Interpreter C/C++ Environment" \
+LABEL org.opencontainers.image.title="KubeCodeRun C/C++ Environment" \
       org.opencontainers.image.description="Secure execution environment for C/C++ code" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \

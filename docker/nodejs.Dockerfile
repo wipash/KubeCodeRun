@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:1
 # Node.js execution environment with BuildKit optimizations.
 
 ARG BUILD_DATE
@@ -33,7 +33,7 @@ ARG BUILD_DATE
 ARG VERSION
 ARG VCS_REF
 
-LABEL org.opencontainers.image.title="Code Interpreter Node.js Environment" \
+LABEL org.opencontainers.image.title="KubeCodeRun Node.js Environment" \
       org.opencontainers.image.description="Secure execution environment for JavaScript/TypeScript code" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \

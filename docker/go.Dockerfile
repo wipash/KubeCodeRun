@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:1
 # Go execution environment with BuildKit optimizations.
 FROM golang:1.23-alpine
 
@@ -6,7 +6,7 @@ ARG BUILD_DATE
 ARG VERSION
 ARG VCS_REF
 
-LABEL org.opencontainers.image.title="Code Interpreter Go Environment" \
+LABEL org.opencontainers.image.title="KubeCodeRun Go Environment" \
       org.opencontainers.image.description="Secure execution environment for Go code" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \

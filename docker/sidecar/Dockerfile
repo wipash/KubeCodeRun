@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:1
 # BuildKit syntax for cache mounts and other optimizations
 
 ARG BUILD_DATE

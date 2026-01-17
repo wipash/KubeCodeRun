@@ -87,7 +87,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 # Install ONLY runtime dependencies (no -dev packages)
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    libzip4 \
+    libzip5 \
     libpng16-16 \
     libjpeg62-turbo \
     libfreetype6 \

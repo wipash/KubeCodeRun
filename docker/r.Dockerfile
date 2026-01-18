@@ -1,9 +1,21 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:1
 # R execution environment with BuildKit optimizations.
-FROM r-base:4.3.0
 
-# Install system dependencies for R packages (including Cairo)
-RUN apt-get update && apt-get install -y --no-install-recommends \
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+################################
+# Builder stage - compile R packages
+################################
+FROM r-base:4.5.2 AS builder
+
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Install build dependencies for R packages
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     libcurl4-openssl-dev \
     libssl-dev \
     libxml2-dev \
@@ -17,12 +29,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2-dev \
     libxt-dev \
     libx11-dev \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Install all R packages in a single layer using Posit Package Manager
+# Install all R packages using Posit Package Manager
 # - amd64: Downloads pre-compiled binaries (~5 min)
 # - arm64: Compiles from source but single layer avoids redundant dependency builds
-RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/bookworm/latest')); \
+RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux__/trixie/latest')); \
     install.packages(c( \
         'dplyr', 'tidyr', 'data.table', 'magrittr', \
         'ggplot2', 'lattice', 'scales', 'Cairo', \
@@ -30,16 +43,61 @@ RUN R -e "options(repos = c(CRAN = 'https://packagemanager.posit.co/cran/__linux
         'MASS', 'survival', 'lubridate', 'stringr', 'glue' \
     ))"
 
-# Create non-root user
-RUN groupadd -g 1001 codeuser && \
-    useradd -r -u 1001 -g codeuser codeuser
+################################
+# Final stage - minimal runtime image
+################################
+FROM r-base:4.5.2 AS final
+
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="KubeCodeRun R Environment" \
+      org.opencontainers.image.description="Secure execution environment for R code" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Install ONLY runtime dependencies (no -dev packages)
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    libcurl4 \
+    libssl3 \
+    libxml2 \
+    libfontconfig1 \
+    libharfbuzz0b \
+    libfribidi0 \
+    libfreetype6 \
+    libpng16-16 \
+    libtiff6 \
+    libjpeg62-turbo \
+    libcairo2 \
+    libxt6 \
+    libx11-6 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed R packages from builder
+COPY --from=builder /usr/local/lib/R/site-library /usr/local/lib/R/site-library
+
+# Create non-root user with UID/GID 1000 to match Kubernetes security context
+# Handle case where UID/GID 1000 already exists in base image (e.g., 'docker' user in r-base)
+RUN set -eu; \
+    getent group 1000 >/dev/null || groupadd -g 1000 codeuser; \
+    if ! getent passwd 1000 >/dev/null; then \
+        group_name="$(getent group 1000 | cut -d: -f1)"; \
+        useradd -r -u 1000 -g "$group_name" codeuser; \
+    fi
 
 # Set working directory and ensure ownership
 WORKDIR /mnt/data
-RUN chown -R codeuser:codeuser /mnt/data
+RUN chown 1000:1000 /mnt/data
 
-# Switch to non-root user
-USER codeuser
+# Switch to non-root user (use UID to work regardless of username)
+USER 1000
 
 # Set environment variables
 ENV R_LIBS_USER=/usr/local/lib/R/site-library

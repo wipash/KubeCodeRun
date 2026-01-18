@@ -1,36 +1,40 @@
-# syntax=docker/dockerfile:1.4
-# Fortran execution environment with BuildKit optimizations.
-FROM ubuntu:22.04
+# syntax=docker/dockerfile:1
+# Fortran execution environment
+FROM debian:trixie-slim
 
-# Prevent interactive prompts during package installation
-ENV DEBIAN_FRONTEND=noninteractive
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
 
-# Install system dependencies and Fortran compiler
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gfortran-12 \
-    gcc \
-    g++ \
-    make \
+LABEL org.opencontainers.image.title="KubeCodeRun Fortran Environment" \
+      org.opencontainers.image.description="Secure execution environment for Fortran code" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Install Fortran compiler and scientific libraries
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    gfortran \
     cmake \
+    make \
     libblas-dev \
     liblapack-dev \
     libnetcdf-dev \
     libhdf5-dev \
-    build-essential \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Set gfortran-12 as the default fortran compiler
-RUN update-alternatives --install /usr/bin/gfortran gfortran /usr/bin/gfortran-12 100 \
-    && update-alternatives --install /usr/bin/f95 f95 /usr/bin/gfortran-12 100
-
-# Create non-root user
-RUN groupadd -g 1001 codeuser && \
-    useradd -r -u 1001 -g codeuser codeuser
+# Create non-root user with UID/GID 1000 to match Kubernetes security context
+RUN groupadd -g 1000 codeuser && \
+    useradd -r -u 1000 -g codeuser codeuser
 
 # Set working directory and ensure ownership
 WORKDIR /mnt/data
-RUN chown -R codeuser:codeuser /mnt/data
+RUN chown codeuser:codeuser /mnt/data
 
 # Switch to non-root user
 USER codeuser

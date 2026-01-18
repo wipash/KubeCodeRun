@@ -1,6 +1,19 @@
-# syntax=docker/dockerfile:1.4
+# syntax=docker/dockerfile:1
 # Rust execution environment with BuildKit optimizations
-FROM rust:1.92-slim
+FROM rust:1.92.0-slim-trixie
+
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="KubeCodeRun Rust Environment" \
+      org.opencontainers.image.description="Secure execution environment for Rust code" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -9,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     libfontconfig1-dev \
     libfreetype6-dev \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a temporary project to pre-compile and cache crates
@@ -20,22 +34,23 @@ COPY requirements/rust-Cargo.toml Cargo.toml
 # Create minimal src/main.rs (cargo init would fail since Cargo.toml exists)
 RUN mkdir -p src && echo 'fn main() {}' > src/main.rs
 
-# Pre-compile crates with cache mounts
+# Fetch crate dependencies into cache
+# cargo fetch downloads dependencies without compiling, which is faster and
+# more reliable for cache warming (no system library dependencies needed)
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/tmp/rust-cache/target \
-    cargo build --release || true
+    cargo fetch
 
 # Clean up the temporary project but keep the cargo cache
 WORKDIR /
 RUN rm -rf /tmp/rust-cache
 
-# Create non-root user
-RUN groupadd -g 1001 codeuser && \
-    useradd -r -u 1001 -g codeuser codeuser
+# Create non-root user with UID/GID 1000 to match Kubernetes security context
+RUN groupadd -g 1000 codeuser && \
+    useradd -r -u 1000 -g codeuser codeuser
 
 # Set working directory and ensure ownership
 WORKDIR /mnt/data
-RUN chown -R codeuser:codeuser /mnt/data
+RUN chown codeuser:codeuser /mnt/data
 
 # Switch to non-root user
 USER codeuser

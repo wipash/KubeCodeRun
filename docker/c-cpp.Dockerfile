@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.4
 # C/C++ execution environment with BuildKit optimizations
 # Pin to specific version for reproducibility.
-FROM gcc:13-bookworm
+FROM debian:trixie-slim
 
 # Install essential development tools and libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \

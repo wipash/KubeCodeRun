@@ -1,9 +1,21 @@
 # syntax=docker/dockerfile:1
 # PHP execution environment with BuildKit optimizations.
-FROM php:8.2-cli
 
-# Install system dependencies and PHP extensions
-RUN apt-get update && apt-get install -y --no-install-recommends \
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+################################
+# Builder stage - compile extensions and install packages
+################################
+FROM php:8.4-cli-trixie AS builder
+
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Install build dependencies and compile PHP extensions
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     libzip-dev \
     libpng-dev \
     libjpeg-dev \
@@ -11,7 +23,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libonig-dev \
     libxml2-dev \
     unzip \
-    git \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
     && docker-php-ext-install -j$(nproc) \
         xml \
@@ -34,22 +45,14 @@ RUN EXPECTED_CHECKSUM="$(php -r 'copy("https://composer.github.io/installer.sig"
     php composer-setup.php --install-dir=/usr/local/bin --filename=composer && \
     rm composer-setup.php
 
-# Create non-root user
-RUN groupadd -g 1001 codeuser && \
-    useradd -r -u 1001 -g codeuser codeuser
-
-# Create global composer directory and set permissions
-RUN mkdir -p /opt/composer/global && \
-    chown -R codeuser:codeuser /opt/composer
-
-# Switch to non-root user for package installation
-USER codeuser
+# Create composer directory structure
+RUN mkdir -p /opt/composer/global
 
 # Set composer home directory
 ENV COMPOSER_HOME=/opt/composer/global
 
 # Pre-install PHP packages globally with cache mount
-RUN --mount=type=cache,target=/opt/composer/global/cache,uid=1001,gid=1001 \
+RUN --mount=type=cache,target=/opt/composer/global/cache \
     composer global require \
     league/csv \
     phpoffice/phpspreadsheet \
@@ -63,14 +66,58 @@ RUN --mount=type=cache,target=/opt/composer/global/cache,uid=1001,gid=1001 \
     symfony/console \
     --optimize-autoloader
 
-# Switch back to root to set up directories and final permissions
-USER root
+################################
+# Final stage - minimal runtime image
+################################
+FROM php:8.4-cli-trixie AS final
 
-# Set working directory and ensure ownership
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="KubeCodeRun PHP Environment" \
+      org.opencontainers.image.description="Secure execution environment for PHP code" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Install ONLY runtime dependencies (no -dev packages)
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    libzip5 \
+    libpng16-16 \
+    libjpeg62-turbo \
+    libfreetype6 \
+    libonig5 \
+    libxml2 \
+    unzip \
+    git \
+    && apt-get autoremove -y \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy compiled PHP extensions from builder
+COPY --from=builder /usr/local/lib/php/extensions/ /usr/local/lib/php/extensions/
+COPY --from=builder /usr/local/etc/php/conf.d/ /usr/local/etc/php/conf.d/
+
+# Copy Composer
+COPY --from=builder /usr/local/bin/composer /usr/local/bin/composer
+
+# Copy pre-installed composer packages
+COPY --from=builder /opt/composer/global /opt/composer/global
+
+# Create non-root user with UID/GID 1001
+RUN groupadd -g 1001 codeuser && \
+    useradd -r -u 1001 -g codeuser codeuser && \
+    mkdir -p /mnt/data && chown codeuser:codeuser /mnt/data && \
+    chown -R codeuser:codeuser /opt/composer/global
+
 WORKDIR /mnt/data
-RUN chown -R codeuser:codeuser /mnt/data
 
-# Switch to non-root user for execution
+# Switch to non-root user
 USER codeuser
 
 # Set environment variables

@@ -68,8 +68,15 @@ LABEL org.opencontainers.image.title="KubeCodeRun Java Environment" \
 # Enable pipefail for safer pipe operations
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Ensure ownership of working directory
-RUN chown -R codeuser:codeuser /mnt/data
+# Copy verified JARs from builder
+COPY --from=builder /build/lib /opt/java/lib
+
+# Create non-root user with UID/GID 1001
+RUN groupadd -g 1001 codeuser && \
+    useradd -r -u 1001 -g codeuser codeuser && \
+    mkdir -p /mnt/data && chown codeuser:codeuser /mnt/data
+
+WORKDIR /mnt/data
 
 # Switch to non-root user
 USER codeuser

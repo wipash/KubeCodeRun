@@ -31,13 +31,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
+# Create non-root user with UID/GID 1001
 RUN groupadd -g 1001 codeuser && \
-    useradd -r -u 1001 -g codeuser codeuser
+    useradd -r -u 1001 -g codeuser codeuser && \
+    mkdir -p /mnt/data && chown codeuser:codeuser /mnt/data
 
-# Set working directory and ensure ownership
 WORKDIR /mnt/data
-RUN chown -R codeuser:codeuser /mnt/data
 
 # Switch to non-root user
 USER codeuser

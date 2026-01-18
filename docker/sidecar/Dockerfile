@@ -48,21 +48,22 @@ RUN set -eux; \
       util-linux \
       libcap2-bin; \
     apt-get autoremove -y; \
+    apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 
-# Create non-root user (used when nsenter is not needed)
-RUN groupadd -r -g 1000 appuser && useradd -r -u 1000 -g appuser appuser
+# Create non-root user with UID/GID 1001
+RUN groupadd -r -g 1001 codeuser && useradd -r -u 1001 -g codeuser codeuser
 
 WORKDIR /app
 
 # Copy the application from the builder
-COPY --from=builder /app /app
+COPY --from=builder --chown=codeuser:codeuser /app /app
 
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
 
 # Create working directory
-RUN mkdir -p /mnt/data && chown -R appuser:appuser /mnt/data /app
+RUN mkdir -p /mnt/data && chown codeuser:codeuser /app /mnt/data
 
 # Add file capabilities to nsenter binary so non-root users can use it
 # This allows the binary to gain these capabilities when executed:
@@ -99,7 +100,7 @@ ENV VERSION=${VERSION}
 
 # Run as non-root user - file capabilities on nsenter allow this user
 # to use nsenter with the required privileges
-USER appuser
+USER codeuser
 
 # Run sidecar
 CMD ["python", "main.py"]

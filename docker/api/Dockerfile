@@ -61,25 +61,27 @@ RUN set -eux; \
     apt-get autoremove -y; \
     rm -rf /var/lib/apt/lists/*
 
-# Create non-root user with explicit UID 1000 for consistent volume permissions
+# Create non-root user with UID/GID 1001
 # The docker group GID 988 matches the host's docker group for socket access
-RUN groupadd -r -g 1000 appuser && useradd -r -u 1000 -g appuser -d /app -s /usr/sbin/nologin appuser && \
-    groupadd -g 988 docker && usermod -aG docker appuser
+RUN groupadd -r -g 1001 codeuser && useradd -r -u 1001 -g codeuser -d /app -s /usr/sbin/nologin codeuser && \
+    groupadd -g 988 docker && usermod -aG docker codeuser
 
 WORKDIR /app
 
 # Copy the application from the builder
-COPY --from=builder --chown=appuser:appuser /app /app
+COPY --from=builder --chown=codeuser:codeuser /app/.venv /app/.venv
+COPY --from=builder --chown=codeuser:codeuser /app/src /app/src
+COPY --from=builder --chown=codeuser:codeuser /app/dashboard /app/dashboard
 
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
 
 # Create necessary directories with correct ownership
 RUN mkdir -p /app/logs /app/data /app/ssl && \
-    chown -R appuser:appuser /app
+    chown codeuser:codeuser /app /app/logs /app/data /app/ssl
 
 # Switch to non-root user
-USER appuser
+USER codeuser
 
 # Set environment variables
 ENV PYTHONPATH=/app \

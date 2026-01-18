@@ -19,13 +19,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ldc \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user (uid:1001) consistent with other images
-RUN useradd -m -u 1001 runner && mkdir -p /mnt/data && chown -R runner:runner /mnt/data
+# Create non-root user with UID/GID 1001
+RUN groupadd -g 1001 codeuser && \
+    useradd -r -u 1001 -g codeuser codeuser && \
+    mkdir -p /mnt/data && chown codeuser:codeuser /mnt/data
 
 WORKDIR /mnt/data
 
 # Switch to non-root user
-USER 1001:1001
+USER codeuser
 
 # Default command with sanitized environment
 ENTRYPOINT ["/usr/bin/env","-i","PATH=/usr/local/bin:/usr/bin:/bin","HOME=/tmp","TMPDIR=/tmp"]

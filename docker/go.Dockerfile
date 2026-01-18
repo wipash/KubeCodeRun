@@ -29,15 +29,12 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     go mod download && \
     cd / && rm -rf /tmp/gosetup
 
-# Create non-root user
-RUN addgroup -g 1001 -S codeuser && \
-    adduser -S codeuser -u 1001 -G codeuser
+# Create non-root user with UID/GID 1001
+RUN addgroup -g 1001 codeuser && \
+    adduser -u 1001 -G codeuser -D -H -S codeuser && \
+    mkdir -p /mnt/data && chown codeuser:codeuser /mnt/data
 
-# Set working directory
 WORKDIR /mnt/data
-
-# Ensure ownership of working directory
-RUN chown -R codeuser:codeuser /mnt/data
 
 # Switch to non-root user
 USER codeuser

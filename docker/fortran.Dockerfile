@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.4
 # Fortran execution environment with BuildKit optimizations.
-FROM ubuntu:22.04
+FROM debian:trixie-slim
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -20,11 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Set gfortran-12 as the default fortran compiler
-RUN update-alternatives --install /usr/bin/gfortran gfortran /usr/bin/gfortran-12 100 \
-    && update-alternatives --install /usr/bin/f95 f95 /usr/bin/gfortran-12 100
-
-# Create non-root user
+# Create non-root user with UID/GID 1001
 RUN groupadd -g 1001 codeuser && \
     useradd -r -u 1001 -g codeuser codeuser
 

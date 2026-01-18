@@ -68,29 +68,13 @@ COPY requirements/python-documents.txt /tmp/python-documents.txt
 COPY requirements/python-utilities.txt /tmp/python-utilities.txt
 COPY requirements/python-new.txt /tmp/python-new.txt
 
-# Layer 1: Core data packages (most stable, rarely changes)
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r /tmp/python-core.txt
-
-# Layer 2: Analysis packages (math, science, ML)
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r /tmp/python-analysis.txt
-
-# Layer 3: Visualization packages
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r /tmp/python-visualization.txt
-
-# Layer 4: Document processing packages
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r /tmp/python-documents.txt
-
-# Layer 5: Utility packages
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r /tmp/python-utilities.txt
-
-# Layer 6: NEW packages (changes most frequently)
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install -r /tmp/python-new.txt
+     pip install \
+     -r /tmp/python-core.txt \
+     -r /tmp/python-analysis.txt \
+     -r /tmp/python-visualization.txt \
+     -r /tmp/python-documents.txt \
+     -r /tmp/python-utilities.txt
 
 ################################
 # Final stage - minimal runtime image

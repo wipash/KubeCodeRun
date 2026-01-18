@@ -20,6 +20,7 @@ RUN apk add --no-cache \
 COPY requirements/nodejs.txt /tmp/nodejs.txt
 
 # Install packages globally with cache mount
+# hadolint ignore=SC2086
 RUN --mount=type=cache,target=/root/.npm \
     packages="$(sed -e '/^[[:space:]]*#/d' -e '/^[[:space:]]*$/d' /tmp/nodejs.txt)" && \
     if [ -n "$packages" ]; then npm install -g $packages; fi

@@ -24,6 +24,7 @@ WORKDIR /build
 COPY requirements/java-deps.txt /build/java-deps.txt
 
 # Download JARs and verify SHA-256 checksums
+# hadolint ignore=SC2086
 RUN set -eux; \
     mkdir -p /build/lib; \
     while IFS= read -r line; do \

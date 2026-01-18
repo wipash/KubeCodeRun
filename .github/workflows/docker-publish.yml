@@ -74,7 +74,7 @@ jobs:
           filters: |
             api:
               - 'src/**'
-              - 'Dockerfile'
+              - 'docker/api/Dockerfile'
               - 'pyproject.toml'
               - 'uv.lock'
             sidecar:
@@ -123,7 +123,7 @@ jobs:
     uses: ./.github/workflows/docker-build-reusable.yml
     with:
       image_name: kubecoderun-api
-      dockerfile: Dockerfile
+      dockerfile: docker/api/Dockerfile
       context: .
       image_tag: ${{ needs.changes.outputs.image_tag }}
       is_release: ${{ needs.changes.outputs.is_release == 'true' }}

@@ -7,7 +7,6 @@ pillow>=10.0
 imageio>=2.33
 scikit-image>=0.22
 opencv-python-headless>=4.8
-pygame>=2.5
 contourpy>=1.2
 cycler>=0.12
 fonttools>=4.47

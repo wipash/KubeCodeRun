@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Python execution environment with BuildKit optimizations.
+# Python execution environment with Docker Hardened Images.
 
 ARG BUILD_DATE
 ARG VERSION
@@ -8,12 +8,12 @@ ARG VCS_REF
 ################################
 # Builder stage - install packages with build tools
 ################################
-FROM python:3.13-slim-trixie AS builder
+FROM dhi.io/python:3.14-debian13-dev AS builder
 
 # Enable pipefail for safer pipe operations
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Install build dependencies and runtime dependencies
+# Install build dependencies
 # Build deps are needed for compiling native extensions
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -27,9 +27,6 @@ RUN apt-get update && \
     libxml2-dev \
     libxslt-dev \
     libffi-dev \
-    libcairo2-dev \
-    libpango1.0-dev \
-    libgdk-pixbuf-2.0-dev \
     libssl-dev \
     libjpeg-dev \
     libpng-dev \
@@ -38,8 +35,6 @@ RUN apt-get update && \
     libfreetype6-dev \
     liblcms2-dev \
     libwebp-dev \
-    tcl8.6-dev \
-    tk8.6-dev \
     portaudio19-dev \
     libpulse-dev \
     && apt-get autoremove -y \
@@ -77,45 +72,29 @@ RUN --mount=type=cache,target=/root/.cache/pip \
      -r /tmp/python-utilities.txt
 
 ################################
-# Final stage - minimal runtime image
+# Runtime dependencies stage - install runtime libraries
 ################################
-FROM python:3.13-slim-trixie AS final
+FROM dhi.io/python:3.14-debian13-dev AS runtime-deps
 
-ARG BUILD_DATE
-ARG VERSION
-ARG VCS_REF
-
-LABEL org.opencontainers.image.title="KubeCodeRun Python Environment" \
-      org.opencontainers.image.description="Secure execution environment for Python code" \
-      org.opencontainers.image.version="${VERSION}" \
-      org.opencontainers.image.created="${BUILD_DATE}" \
-      org.opencontainers.image.revision="${VCS_REF}"
-
-# Enable pipefail for safer pipe operations
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Install ONLY runtime dependencies (no -dev packages, no compilers)
-RUN apt-get update && \
+# Create both arch lib dirs to ensure COPY works on either architecture
+RUN mkdir -p /usr/lib/x86_64-linux-gnu /usr/lib/aarch64-linux-gnu && \
+    apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     # Runtime libraries (counterparts to -dev packages in builder)
     libxml2 \
     libxslt1.1 \
     libffi8 \
-    libcairo2 \
-    libpango-1.0-0 \
-    libpangocairo-1.0-0 \
-    libgdk-pixbuf-2.0-0 \
-    libssl3 \
+    libssl3t64 \
     libjpeg62-turbo \
-    libpng16-16 \
+    libpng16-16t64 \
     libtiff6 \
     libopenjp2-7 \
     libfreetype6 \
     liblcms2-2 \
     libwebp7 \
-    tcl8.6 \
-    tk8.6 \
-    python3-tk \
     libportaudio2 \
     libpulse0 \
     # External tools needed at runtime
@@ -128,25 +107,53 @@ RUN apt-get update && \
     unrtf \
     && apt-get autoremove -y \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /mnt/data && chown 65532:65532 /mnt/data
+
+################################
+# Final stage - minimal runtime image
+################################
+FROM dhi.io/python:3.14-debian13 AS final
+
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="KubeCodeRun Python Environment" \
+      org.opencontainers.image.description="Secure execution environment for Python code" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
+# Copy runtime libraries from runtime-deps stage
+COPY --from=runtime-deps /usr/lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu
+COPY --from=runtime-deps /usr/lib/aarch64-linux-gnu /usr/lib/aarch64-linux-gnu
+COPY --from=runtime-deps /usr/bin/pdftotext /usr/bin/pdftoppm /usr/bin/pdfinfo /usr/bin/
+COPY --from=runtime-deps /usr/bin/tesseract /usr/bin/
+COPY --from=runtime-deps /usr/bin/pandoc /usr/bin/
+COPY --from=runtime-deps /usr/bin/ffmpeg /usr/bin/ffprobe /usr/bin/
+COPY --from=runtime-deps /usr/bin/flac /usr/bin/
+COPY --from=runtime-deps /usr/bin/antiword /usr/bin/
+COPY --from=runtime-deps /usr/bin/unrtf /usr/bin/
+COPY --from=runtime-deps /usr/share/tesseract-ocr /usr/share/tesseract-ocr
 
 # Copy installed Python packages from builder
-COPY --from=builder /usr/local/lib/python3.13/site-packages /usr/local/lib/python3.13/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+# DHI Python is installed in /opt/python, not /usr/local
+COPY --from=builder /opt/python/lib/python3.14/site-packages /opt/python/lib/python3.14/site-packages
+COPY --from=builder /opt/python/bin /opt/python/bin
 
-# Create non-root user with UID/GID 1001
-RUN groupadd -g 1001 codeuser && \
-    useradd -r -u 1001 -g codeuser codeuser && \
-    mkdir -p /mnt/data && chown codeuser:codeuser /mnt/data
+# Copy /usr/bin/env for sidecar's /usr/bin/env -i execution pattern
+# Copy sleep for the default CMD (keep container alive for sidecar)
+COPY --from=runtime-deps /usr/bin/env /usr/bin/sleep /usr/bin/
+
+# Create data directory - DHI images run as non-root (UID 65532) by default
+COPY --from=runtime-deps /mnt/data /mnt/data
 
 WORKDIR /mnt/data
 
-# Switch to non-root user
-USER codeuser
-
-# Default command with sanitized environment
+# Sanitized environment via env -i
 ENTRYPOINT ["/usr/bin/env", "-i", \
-    "PATH=/usr/local/bin:/usr/bin:/bin", \
+    "PATH=/opt/python/bin:/usr/bin:/bin", \
     "HOME=/tmp", \
     "TMPDIR=/tmp", \
     "PYTHONUNBUFFERED=1", \

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Go execution environment with BuildKit optimizations.
-FROM golang:1.23-alpine
+FROM golang:1.25-alpine
 
 ARG BUILD_DATE
 ARG VERSION

@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Java execution environment with BuildKit optimizations.
+# Java execution environment with Docker Hardened Images.
 
 ARG BUILD_DATE
 ARG VERSION
@@ -8,15 +8,13 @@ ARG VCS_REF
 ################################
 # Builder stage - download and verify JARs
 ################################
-FROM eclipse-temurin:25-jdk AS builder
+FROM dhi.io/eclipse-temurin:25.0-jdk-debian13-dev AS builder
 
-# Enable pipefail for safer pipe operations
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     wget \
-    && apt-get autoremove -y \
-    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
@@ -51,9 +49,9 @@ RUN set -eux; \
     done < /build/java-deps.txt
 
 ################################
-# Runtime stage - minimal image without download tools
+# Final stage
 ################################
-FROM eclipse-temurin:25-jdk
+FROM dhi.io/eclipse-temurin:25.0-jdk-debian13-dev AS final
 
 ARG BUILD_DATE
 ARG VERSION
@@ -65,27 +63,23 @@ LABEL org.opencontainers.image.title="KubeCodeRun Java Environment" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}"
 
-# Enable pipefail for safer pipe operations
-SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-
 # Copy verified JARs from builder
 COPY --from=builder /build/lib /opt/java/lib
 
-# Create non-root user with UID/GID 1001
-RUN groupadd -g 1001 codeuser && \
-    useradd -r -u 1001 -g codeuser codeuser && \
-    mkdir -p /mnt/data && chown codeuser:codeuser /mnt/data
+# Create data directory with correct ownership for DHI non-root user (UID 65532)
+RUN mkdir -p /mnt/data && chown 65532:65532 /mnt/data
 
 WORKDIR /mnt/data
 
-# Switch to non-root user
-USER codeuser
+# DHI -dev images default to root; switch to non-root user (UID 65532)
+USER 65532
 
-# Default command with sanitized environment
+# Sanitized environment via env -i
+# DHI eclipse-temurin installs Java to /usr/local/bin
 ENTRYPOINT ["/usr/bin/env", "-i", \
-    "PATH=/opt/java/openjdk/bin:/usr/local/bin:/usr/bin:/bin", \
+    "PATH=/usr/local/bin:/usr/bin:/bin", \
     "HOME=/tmp", \
     "TMPDIR=/tmp", \
     "CLASSPATH=/mnt/data:/opt/java/lib/*", \
     "JAVA_OPTS=-Xmx512m -Xms128m"]
-CMD ["java", "--version"]
+CMD ["sleep", "infinity"]

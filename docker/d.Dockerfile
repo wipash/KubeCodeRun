@@ -1,32 +1,44 @@
-# syntax=docker/dockerfile:1.4
-# D execution environment with BuildKit optimizations.
-FROM ubuntu:22.04
+# syntax=docker/dockerfile:1
+# D execution environment
+FROM debian:trixie-slim
 
 ARG BUILD_DATE
 ARG VERSION
 ARG VCS_REF
 
-LABEL org.opencontainers.image.title="Code Interpreter D Environment" \
+LABEL org.opencontainers.image.title="KubeCodeRun D Environment" \
       org.opencontainers.image.description="Secure execution environment for D (ldc2) code" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}"
 
-# Install toolchain (ldc2) and basics; works on amd64 and arm64
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      ca-certificates curl wget xz-utils git \
-      build-essential make binutils \
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Install toolchain (ldc2) and basics
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      ca-certificates \
+      git \
+      build-essential \
       ldc \
+    && apt-get autoremove -y \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user (uid:1001) consistent with other images
-RUN useradd -m -u 1001 runner && mkdir -p /mnt/data && chown -R runner:runner /mnt/data
+# Create non-root user with UID/GID 1001
+RUN groupadd -g 1001 codeuser && \
+    useradd -r -u 1001 -g codeuser codeuser && \
+    mkdir -p /mnt/data && chown codeuser:codeuser /mnt/data
 
 WORKDIR /mnt/data
 
 # Switch to non-root user
-USER 1001:1001
+USER codeuser
 
 # Default command with sanitized environment
-ENTRYPOINT ["/usr/bin/env","-i","PATH=/usr/local/bin:/usr/bin:/bin","HOME=/tmp","TMPDIR=/tmp"]
+ENTRYPOINT ["/usr/bin/env", "-i", \
+    "PATH=/usr/local/bin:/usr/bin:/bin", \
+    "HOME=/tmp", \
+    "TMPDIR=/tmp"]
 CMD ["ldc2", "--version"]

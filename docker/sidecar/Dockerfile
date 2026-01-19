@@ -1,5 +1,9 @@
 # syntax=docker/dockerfile:1
-# Keep this syntax directive! It's used to enable Docker BuildKit
+# BuildKit syntax for cache mounts and other optimizations
+
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
 
 ################################
 # Builder STAGE
@@ -25,30 +29,41 @@ COPY main.py .
 ################################
 FROM python:3.13-slim-trixie AS production
 
+# Add metadata
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="KubeCodeRun Sidecar" \
+      org.opencontainers.image.description="HTTP sidecar for executing code in Kubernetes pods via nsenter" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
 # Install runtime dependencies
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN set -eux; \
     apt-get update; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      curl \
       util-linux \
       libcap2-bin; \
     apt-get autoremove -y; \
+    apt-get clean; \
     rm -rf /var/lib/apt/lists/*
 
-# Create non-root user (used when nsenter is not needed)
-RUN groupadd -r -g 1000 appuser && useradd -r -u 1000 -g appuser appuser
+# Create non-root user with UID/GID 1001
+RUN groupadd -r -g 1001 codeuser && useradd -r -u 1001 -g codeuser codeuser
 
 WORKDIR /app
 
 # Copy the application from the builder
-COPY --from=builder /app /app
+COPY --from=builder --chown=codeuser:codeuser /app /app
 
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
 
 # Create working directory
-RUN mkdir -p /mnt/data && chown -R appuser:appuser /mnt/data /app
+RUN mkdir -p /mnt/data && chown codeuser:codeuser /app /mnt/data
 
 # Add file capabilities to nsenter binary so non-root users can use it
 # This allows the binary to gain these capabilities when executed:
@@ -77,7 +92,7 @@ EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=10s --timeout=5s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/health || exit 1
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=4).read()"]
 
 # Version passed as build arg
 ARG VERSION=0.0.0-dev
@@ -85,7 +100,7 @@ ENV VERSION=${VERSION}
 
 # Run as non-root user - file capabilities on nsenter allow this user
 # to use nsenter with the required privileges
-USER appuser
+USER codeuser
 
 # Run sidecar
 CMD ["python", "main.py"]

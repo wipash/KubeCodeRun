@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1
-# Keep this syntax directive! It's used to enable Docker BuildKit
+# BuildKit syntax for cache mounts and other optimizations
 
 ################################
 # Builder STAGE
@@ -57,39 +57,40 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN set -eux; \
     apt-get update; \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      catatonit \
-      curl; \
+      catatonit; \
     apt-get autoremove -y; \
     rm -rf /var/lib/apt/lists/*
 
-# Create non-root user with explicit UID 1000 for consistent volume permissions
+# Create non-root user with UID/GID 1001
 # The docker group GID 988 matches the host's docker group for socket access
-RUN groupadd -r -g 1000 appuser && useradd -r -u 1000 -g appuser -d /app -s /usr/sbin/nologin appuser && \
-    groupadd -g 988 docker && usermod -aG docker appuser
+RUN groupadd -r -g 1001 codeuser && useradd -r -u 1001 -g codeuser -d /app -s /usr/sbin/nologin codeuser && \
+    groupadd -g 988 docker && usermod -aG docker codeuser
 
 WORKDIR /app
 
 # Copy the application from the builder
-COPY --from=builder --chown=appuser:appuser /app /app
+COPY --from=builder --chown=codeuser:codeuser /app/.venv /app/.venv
+COPY --from=builder --chown=codeuser:codeuser /app/src /app/src
+COPY --from=builder --chown=codeuser:codeuser /app/dashboard /app/dashboard
 
 # Place executables in the environment at the front of the path
 ENV PATH="/app/.venv/bin:$PATH"
 
 # Create necessary directories with correct ownership
 RUN mkdir -p /app/logs /app/data /app/ssl && \
-    chown -R appuser:appuser /app
+    chown codeuser:codeuser /app /app/logs /app/data /app/ssl
 
 # Switch to non-root user
-USER appuser
+USER codeuser
 
 # Set environment variables
 ENV PYTHONPATH=/app \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-# Health check - try HTTPS first, then common HTTP ports
+# Health check
 HEALTHCHECK --interval=30s --timeout=15s --start-period=10s --retries=3 \
-    CMD curl -f -k https://localhost:443/health 2>/dev/null || curl -f http://localhost:8000/health 2>/dev/null || curl -f http://localhost:80/health || exit 1
+    CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=10).read()"]
 
 # Expose ports
 EXPOSE 8000 443

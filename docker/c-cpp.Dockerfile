@@ -1,10 +1,25 @@
-# syntax=docker/dockerfile:1.4
-# C/C++ execution environment with BuildKit optimizations
-# Pin to specific version for reproducibility.
-FROM gcc:13-bookworm
+# syntax=docker/dockerfile:1
+# C/C++ execution environment
+FROM debian:trixie-slim
+
+ARG BUILD_DATE
+ARG VERSION
+ARG VCS_REF
+
+LABEL org.opencontainers.image.title="KubeCodeRun C/C++ Environment" \
+      org.opencontainers.image.description="Secure execution environment for C/C++ code" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}"
+
+# Enable pipefail for safer pipe operations
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Install essential development tools and libraries
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
     make \
     cmake \
     # Math and science libraries
@@ -20,24 +35,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcsv-dev \
     # Additional utilities
     pkg-config \
+    && apt-get autoremove -y \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
+# Create non-root user with UID/GID 1001
 RUN groupadd -g 1001 codeuser && \
-    useradd -r -u 1001 -g codeuser codeuser
+    useradd -r -u 1001 -g codeuser codeuser && \
+    mkdir -p /mnt/data && chown codeuser:codeuser /mnt/data
 
-# Set working directory and ensure ownership
 WORKDIR /mnt/data
-RUN chown -R codeuser:codeuser /mnt/data
 
 # Switch to non-root user
 USER codeuser
 
-# Set environment variables for C/C++ development
-ENV CC=gcc \
-    CXX=g++ \
-    PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig
-
 # Default command with sanitized environment
-ENTRYPOINT ["/usr/bin/env","-i","PATH=/usr/local/bin:/usr/bin:/bin","HOME=/tmp","TMPDIR=/tmp","CC=gcc","CXX=g++","PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig"]
+ENTRYPOINT ["/usr/bin/env", "-i", \
+    "PATH=/usr/local/bin:/usr/bin:/bin", \
+    "HOME=/tmp", \
+    "TMPDIR=/tmp", \
+    "CC=gcc", \
+    "CXX=g++", \
+    "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig"]
 CMD ["/bin/bash"]

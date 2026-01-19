@@ -1,0 +1,17 @@
+# Keep sidecar build context minimal and deterministic.
+
+__pycache__/
+*.py[cod]
+
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+.git/
+
+.env
+.env.*
+.vscode/
+.idea/

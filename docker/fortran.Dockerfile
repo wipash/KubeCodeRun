@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
-# Fortran execution environment
-FROM debian:trixie-slim
+# Fortran execution environment with Docker Hardened Images
+
+FROM dhi.io/debian-base:trixie
 
 ARG BUILD_DATE
 ARG VERSION
@@ -25,21 +26,15 @@ RUN apt-get update && \
     liblapack-dev \
     libnetcdf-dev \
     libhdf5-dev \
-    && apt-get autoremove -y \
-    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user with UID/GID 1001
-RUN groupadd -g 1001 codeuser && \
-    useradd -r -u 1001 -g codeuser codeuser && \
-    mkdir -p /mnt/data && chown codeuser:codeuser /mnt/data
+RUN mkdir -p /mnt/data && chown 65532:65532 /mnt/data
 
 WORKDIR /mnt/data
 
-# Switch to non-root user
-USER codeuser
+USER 65532
 
-# Default command with sanitized environment
+# Sanitized environment via env -i (required for sidecar runtime env detection)
 ENTRYPOINT ["/usr/bin/env", "-i", \
     "PATH=/usr/local/bin:/usr/bin:/bin", \
     "HOME=/tmp", \
@@ -49,4 +44,4 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "F77=gfortran", \
     "F90=gfortran", \
     "F95=gfortran"]
-CMD ["gfortran", "--version"]
+CMD ["sleep", "infinity"]

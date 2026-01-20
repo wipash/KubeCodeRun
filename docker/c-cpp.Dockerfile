@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1
-# C/C++ execution environment
-FROM debian:trixie-slim
+# C/C++ execution environment with Docker Hardened Images
+
+FROM dhi.io/debian-base:trixie
 
 ARG BUILD_DATE
 ARG VERSION
@@ -15,7 +16,7 @@ LABEL org.opencontainers.image.title="KubeCodeRun C/C++ Environment" \
 # Enable pipefail for safer pipe operations
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Install essential development tools and libraries
+# Install compilers, development tools and scientific libraries
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     gcc \
@@ -35,21 +36,15 @@ RUN apt-get update && \
     libcsv-dev \
     # Additional utilities
     pkg-config \
-    && apt-get autoremove -y \
-    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user with UID/GID 1001
-RUN groupadd -g 1001 codeuser && \
-    useradd -r -u 1001 -g codeuser codeuser && \
-    mkdir -p /mnt/data && chown codeuser:codeuser /mnt/data
+RUN mkdir -p /mnt/data && chown 65532:65532 /mnt/data
 
 WORKDIR /mnt/data
 
-# Switch to non-root user
-USER codeuser
+USER 65532
 
-# Default command with sanitized environment
+# Sanitized environment
 ENTRYPOINT ["/usr/bin/env", "-i", \
     "PATH=/usr/local/bin:/usr/bin:/bin", \
     "HOME=/tmp", \
@@ -57,4 +52,4 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "CC=gcc", \
     "CXX=g++", \
     "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig"]
-CMD ["/bin/bash"]
+CMD ["sleep", "infinity"]

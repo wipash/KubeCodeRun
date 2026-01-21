@@ -55,7 +55,6 @@ COPY requirements/python-analysis.txt /tmp/python-analysis.txt
 COPY requirements/python-visualization.txt /tmp/python-visualization.txt
 COPY requirements/python-documents.txt /tmp/python-documents.txt
 COPY requirements/python-utilities.txt /tmp/python-utilities.txt
-COPY requirements/python-new.txt /tmp/python-new.txt
 
 # Layer 1: Core data packages (most stable, rarely changes)
 RUN --mount=type=cache,target=/root/.cache/pip \

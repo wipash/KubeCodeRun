@@ -1,0 +1,29 @@
+# Java dependencies with SHA-256 checksums for supply chain security
+# Format: URL SHA256
+# To update: ./docker/requirements/update-java-deps.sh
+#
+# Apache Commons
+https://repo1.maven.org/maven2/org/apache/commons/commons-csv/1.10.0/commons-csv-1.10.0.jar 2d06e6a07a636baf777ad8e659256f2119109dde23551c9b80c5422d424b808c
+https://repo1.maven.org/maven2/org/apache/commons/commons-lang3/3.14.0/commons-lang3-3.14.0.jar 7b96bf3ee68949abb5bc465559ac270e0551596fa34523fddf890ec418dde13c
+https://repo1.maven.org/maven2/org/apache/commons/commons-math3/3.6.1/commons-math3-3.6.1.jar 1e56d7b058d28b65abd256b8458e3885b674c1d588fa43cd7d1cbb9c7ef2b308
+https://repo1.maven.org/maven2/org/apache/commons/commons-collections4/4.4/commons-collections4-4.4.jar 1df8b9430b5c8ed143d7815e403e33ef5371b2400aadbe9bda0883762e0846d1
+https://repo1.maven.org/maven2/org/apache/commons/commons-compress/1.25.0/commons-compress-1.25.0.jar d0ec8014ebbb0749f471803122b21796afddf2e98e194e4374622e5fbaf69f49
+https://repo1.maven.org/maven2/org/apache/commons/commons-text/1.11.0/commons-text-1.11.0.jar 2acf30a070b19163d5a480eae411a281341e870020e3534c6d5d4c8472739e30
+# Jackson JSON
+https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-core/2.16.0/jackson-core-2.16.0.jar 66e2cde4cc7e565d5fce2a2998b64e991777bf9fad4d220735c525fd8d01c31a
+https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-databind/2.16.0/jackson-databind-2.16.0.jar 8aaf1753823be70b798290e5826ab5bfe015d35b3a36a5d3c2ec9f57d4b0138b
+https://repo1.maven.org/maven2/com/fasterxml/jackson/core/jackson-annotations/2.16.0/jackson-annotations-2.16.0.jar c4b90ea0c0074da17efdc3aa23973525f25d6f34725692169748f529547334a6
+# Apache POI (Excel)
+https://repo1.maven.org/maven2/org/apache/poi/poi/5.2.5/poi-5.2.5.jar 352e1b44a5777af2df3d7dc408cda9f75f932d0e0125fa1a7d336a13c0a663a7
+https://repo1.maven.org/maven2/org/apache/poi/poi-ooxml/5.2.5/poi-ooxml-5.2.5.jar c6ad01a10cefa1d2a9c1b552bd4293a3eca29b513353f1ec814041d38da9ec5b
+https://repo1.maven.org/maven2/org/apache/poi/poi-ooxml-lite/5.2.5/poi-ooxml-lite-5.2.5.jar 6d4ce6736c422c52e47ffbfa08c784e1b8c188efb69583ac001a0ab16022d774
+https://repo1.maven.org/maven2/org/apache/xmlbeans/xmlbeans/5.2.0/xmlbeans-5.2.0.jar 5a344f323c049b7024edd39bbd58a38e77eb44218aad2794879e7f4ac3ca1de1
+# Apache PDFBox
+https://repo1.maven.org/maven2/org/apache/pdfbox/pdfbox/3.0.1/pdfbox-3.0.1.jar 2b7a9f1fe4ba1aa76a1408ad2d47a906cee4925d61ba306dec543637a1cb7c8c
+https://repo1.maven.org/maven2/org/apache/pdfbox/fontbox/3.0.1/fontbox-3.0.1.jar 9d2c2d38449299cd0d821a2f6f65671433251448d3df579faffd0f87361c7c7e
+# Google Guava
+https://repo1.maven.org/maven2/com/google/guava/guava/33.0.0-jre/guava-33.0.0-jre.jar f4d85c3e4d411694337cb873abea09b242b664bb013320be6105327c45991537
+# Gson (alternative JSON)
+https://repo1.maven.org/maven2/com/google/code/gson/gson/2.10.1/gson-2.10.1.jar 4241c14a7727c34feea6507ec801318a3d4a90f070e4525681079fb94ee4c593
+# Joda-Time
+https://repo1.maven.org/maven2/joda-time/joda-time/2.12.5/joda-time-2.12.5.jar 10628411ecb40c4634196c544f34681abdeef826f377096357433d1f9a135bc6

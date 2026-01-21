@@ -1,0 +1,25 @@
+# Keep build contexts minimal and deterministic.
+
+# Python artifacts (sidecar)
+__pycache__/
+*.py[cod]
+
+# Editor/OS
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+
+# Local env/IDE files (if present)
+.env
+.env.*
+.vscode/
+.idea/
+
+# Keep sidecar & API code out of language images
+sidecar/
+api/

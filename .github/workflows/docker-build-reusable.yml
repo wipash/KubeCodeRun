@@ -79,6 +79,9 @@ jobs:
           cache-from: type=gha,scope=${{ inputs.image_name }}-${{ steps.vars.outputs.tag }}
           cache-to: type=gha,mode=max,scope=${{ inputs.image_name }}-${{ steps.vars.outputs.tag }}
           provenance: false
+          # Force gzip compression for compatibility with older container runtimes
+          # DHI base images use zstd which causes layer/diffID mismatch errors
+          outputs: type=image,push=true,compression=gzip,compression-level=6,force-compression=true
           build-args: |
             VERSION=${{ inputs.version }}
 

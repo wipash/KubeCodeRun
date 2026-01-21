@@ -32,6 +32,8 @@ MAX_OUTPUT_SIZE = int(os.getenv("MAX_OUTPUT_SIZE", "1048576"))  # 1MB
 MAIN_PROCESS_NAME = os.getenv("MAIN_PROCESS_NAME", "")
 # Version from build arg (set via Dockerfile ARG -> ENV)
 VERSION = os.getenv("VERSION", "0.0.0-dev")
+# Network isolation mode - when true, disables network-dependent features (e.g., Go module proxy)
+NETWORK_ISOLATED = os.getenv("NETWORK_ISOLATED", "false").lower() in ("true", "1", "yes")
 
 
 class ExecuteRequest(BaseModel):
@@ -186,6 +188,37 @@ def get_container_env(pid: int) -> dict[str, str]:
         return {}
 
 
+def apply_network_isolation_overrides(env: dict[str, str], language: str) -> dict[str, str]:
+    """Apply environment overrides when network isolation is enabled.
+
+    When pods are network-isolated (egress blocked), certain language runtimes
+    need configuration changes to work offline. This function modifies the
+    environment to enable offline/air-gapped operation.
+
+    Args:
+        env: The container environment dictionary (will be modified in place)
+        language: The language being executed
+
+    Returns:
+        The modified environment dictionary
+    """
+    if not NETWORK_ISOLATED:
+        return env
+
+    # Go: Disable module proxy and checksum database for offline operation
+    if language in ("go",):
+        env["GOPROXY"] = "off"
+        env["GOSUMDB"] = "off"
+        print(f"[EXECUTE] Network isolation: overriding GOPROXY=off, GOSUMDB=off", flush=True)
+
+    # Future: Add overrides for other languages as needed
+    # - Rust: CARGO_NET_OFFLINE=true
+    # - npm/Node: npm_config_offline=true
+    # - pip/Python: PIP_NO_INDEX=1
+
+    return env
+
+
 def get_language_command(
     language: str, code: str, working_dir: str, container_env: dict[str, str]
 ) -> tuple[list[str], Path | None]:
@@ -284,6 +317,9 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
         # eliminating config drift between Dockerfiles and sidecar code
         container_env = get_container_env(main_pid)
 
+        # Apply network isolation overrides if enabled
+        container_env = apply_network_isolation_overrides(container_env, LANGUAGE)
+
         # Get the command for this language (this writes code to a temp file)
         cmd, temp_file = get_language_command(
             LANGUAGE, request.code, request.working_dir, container_env
@@ -316,18 +352,22 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
         "--",
     ] + cmd
 
-    # Debug logging
-    print(f"[EXECUTE] main_pid={main_pid}, language={LANGUAGE}")
-    print(f"[EXECUTE] container_env PATH={container_env.get('PATH', 'NOT SET')}")
-    print(f"[EXECUTE] nsenter_cmd={nsenter_cmd}")
+    # Debug logging - use flush=True to ensure output before container termination
+    print(f"[EXECUTE] main_pid={main_pid}, language={LANGUAGE}", flush=True)
+    print(f"[EXECUTE] container_env PATH={container_env.get('PATH', 'NOT SET')}", flush=True)
+    print(f"[EXECUTE] nsenter_cmd={nsenter_cmd}", flush=True)
+    if temp_file:
+        print(f"[EXECUTE] code_file={temp_file}, exists={temp_file.exists()}, size={temp_file.stat().st_size if temp_file.exists() else 0}", flush=True)
 
     try:
+        print(f"[EXECUTE] Creating subprocess...", flush=True)
         proc = await asyncio.create_subprocess_exec(
             *nsenter_cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             cwd=request.working_dir,
         )
+        print(f"[EXECUTE] Subprocess created, pid={proc.pid}, waiting for completion (timeout={request.timeout}s)...", flush=True)
 
         try:
             stdout, stderr = await asyncio.wait_for(
@@ -335,6 +375,7 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
                 timeout=request.timeout,
             )
         except TimeoutError:
+            print(f"[EXECUTE] TIMEOUT after {request.timeout}s, killing process pid={proc.pid}", flush=True)
             proc.kill()
             await proc.wait()
             return ExecuteResponse(
@@ -350,11 +391,11 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
         stderr_str = stderr.decode("utf-8", errors="replace")[:MAX_OUTPUT_SIZE]
 
         # Debug logging
-        print(f"[EXECUTE] exit_code={proc.returncode}, stdout_len={len(stdout_str)}, stderr_len={len(stderr_str)}")
+        print(f"[EXECUTE] exit_code={proc.returncode}, stdout_len={len(stdout_str)}, stderr_len={len(stderr_str)}", flush=True)
         if stdout_str:
-            print(f"[EXECUTE] stdout preview: {stdout_str[:500]!r}")
+            print(f"[EXECUTE] stdout preview: {stdout_str[:500]!r}", flush=True)
         if stderr_str:
-            print(f"[EXECUTE] stderr preview: {stderr_str[:500]!r}")
+            print(f"[EXECUTE] stderr preview: {stderr_str[:500]!r}", flush=True)
 
         return ExecuteResponse(
             exit_code=proc.returncode or 0,
@@ -364,6 +405,8 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
         )
 
     except Exception as e:
+        print(f"[EXECUTE] EXCEPTION: {type(e).__name__}: {e}", flush=True)
+        print(f"[EXECUTE] Traceback: {traceback.format_exc()}", flush=True)
         return ExecuteResponse(
             exit_code=1,
             stdout="",

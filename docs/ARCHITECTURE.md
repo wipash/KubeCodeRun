@@ -335,10 +335,13 @@ src/
 └── main.py                 # Application entry point
 
 docker/
-└── sidecar/               # HTTP sidecar container
-    ├── main.py            # FastAPI sidecar server
-    ├── Dockerfile
-    └── requirements.txt
+├── api/                   # API server container
+│   └── Dockerfile
+├── sidecar/               # HTTP sidecar container
+│   ├── main.py            # FastAPI sidecar server
+│   ├── Dockerfile
+│   └── requirements.txt
+└── *.Dockerfile           # Language execution environments
 
 helm-deployments/
 └── kubecoderun/  # Helm chart

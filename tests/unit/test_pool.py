@@ -868,9 +868,8 @@ class TestPodPoolReplenishLoop:
         """Test replenish loop handles CancelledError."""
         pod_pool._running = True
 
-        original_wait_for = asyncio.wait_for
-
         async def mock_wait_for(coro, **kwargs):
+            coro.close()
             raise asyncio.CancelledError()
 
         with patch("asyncio.wait_for", side_effect=mock_wait_for):

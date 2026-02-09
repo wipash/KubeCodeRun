@@ -18,6 +18,16 @@ class APIConfig(BaseSettings):
     debug: bool = Field(default=False, alias="api_debug")
     reload: bool = Field(default=False, alias="api_reload")
 
+    # Server tuning
+    timeout_keep_alive: int = Field(
+        default=75,
+        ge=5,
+        le=600,
+        alias="api_timeout_keep_alive",
+        description="Seconds to keep idle HTTP connections open (uvicorn --timeout-keep-alive). "
+        "Must be higher than the client's keep-alive timeout to avoid socket hang-up race conditions.",
+    )
+
     # SSL/HTTPS Configuration
     enable_https: bool = Field(default=False)
     https_port: int = Field(default=443, ge=1, le=65535)

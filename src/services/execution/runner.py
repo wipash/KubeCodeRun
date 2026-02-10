@@ -351,6 +351,8 @@ class CodeExecutionRunner:
                         name = f.get("name", "")
                         if name.startswith("code.") or name == "Code.java":
                             continue
+                        if f.get("is_file") is False:
+                            continue
                         if f.get("size", 0) > settings.max_file_size_mb * 1024 * 1024:
                             continue
                         generated_files.append(

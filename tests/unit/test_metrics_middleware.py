@@ -7,28 +7,39 @@ import pytest
 from src.middleware.metrics import MetricsMiddleware
 
 
-@pytest.fixture
-def mock_request():
-    """Create a mock request."""
-    request = MagicMock()
-    request.url.path = "/api/v1/exec"
-    request.method = "POST"
-    return request
+def _make_scope(path="/api/v1/exec", method="POST"):
+    """Create a minimal ASGI HTTP scope."""
+    return {
+        "type": "http",
+        "method": method,
+        "path": path,
+        "root_path": "",
+        "query_string": b"",
+        "headers": [],
+        "server": ("localhost", 8000),
+    }
 
 
-@pytest.fixture
-def mock_response():
-    """Create a mock response."""
-    response = MagicMock()
-    response.status_code = 200
-    response.headers = {}
-    return response
+def _make_asgi_app(status=200):
+    """Create a mock ASGI app that sends a response with the given status."""
+
+    async def app(scope, receive, send):
+        await send(
+            {
+                "type": "http.response.start",
+                "status": status,
+                "headers": [(b"content-type", b"application/json")],
+            }
+        )
+        await send({"type": "http.response.body", "body": b'{"ok":true}'})
+
+    return app
 
 
 @pytest.fixture
 def mock_app():
-    """Create a mock app."""
-    return MagicMock()
+    """Create a mock ASGI app."""
+    return _make_asgi_app(200)
 
 
 @pytest.fixture
@@ -38,39 +49,53 @@ def metrics_middleware(mock_app):
 
 
 class TestMetricsMiddlewareDispatch:
-    """Tests for MetricsMiddleware dispatch method."""
+    """Tests for MetricsMiddleware __call__ method."""
 
     @pytest.mark.asyncio
-    async def test_dispatch_records_metrics(self, metrics_middleware, mock_request, mock_response):
-        """Test that dispatch records metrics."""
-        call_next = AsyncMock(return_value=mock_response)
+    async def test_records_metrics(self):
+        """Test that __call__ records metrics."""
+        inner_app = _make_asgi_app(200)
+        middleware = MetricsMiddleware(inner_app)
+        send = AsyncMock()
 
         with patch("src.middleware.metrics.metrics_collector") as mock_collector:
             with patch("src.middleware.metrics.settings") as mock_settings:
                 mock_settings.api_debug = False
+                await middleware(_make_scope(), AsyncMock(), send)
 
-                result = await metrics_middleware.dispatch(mock_request, call_next)
-
-        assert result == mock_response
         mock_collector.record_api_metrics.assert_called_once()
+        metrics = mock_collector.record_api_metrics.call_args[0][0]
+        assert metrics.status_code == 200
+        assert metrics.method == "POST"
+        assert metrics.endpoint == "/api/v1/exec"
 
     @pytest.mark.asyncio
-    async def test_dispatch_adds_debug_header(self, metrics_middleware, mock_request, mock_response):
+    async def test_adds_debug_header(self):
         """Test that debug header is added in debug mode."""
-        call_next = AsyncMock(return_value=mock_response)
+        inner_app = _make_asgi_app(200)
+        middleware = MetricsMiddleware(inner_app)
+        sent_messages = []
+
+        async def capture_send(message):
+            sent_messages.append(message)
 
         with patch("src.middleware.metrics.metrics_collector"):
             with patch("src.middleware.metrics.settings") as mock_settings:
                 mock_settings.api_debug = True
+                await middleware(_make_scope(), AsyncMock(), capture_send)
 
-                result = await metrics_middleware.dispatch(mock_request, call_next)
-
-        assert "X-Response-Time-Ms" in result.headers
+        start_msg = sent_messages[0]
+        header_names = [name for name, _ in start_msg["headers"]]
+        assert b"x-response-time-ms" in header_names
+        # Verify original headers are preserved (not dropped by dict round-trip)
+        assert b"content-type" in header_names
 
     @pytest.mark.asyncio
-    async def test_dispatch_handles_metric_error(self, metrics_middleware, mock_request, mock_response):
-        """Test that dispatch handles metrics recording errors gracefully."""
-        call_next = AsyncMock(return_value=mock_response)
+    async def test_handles_metric_error(self):
+        """Test that __call__ handles metrics recording errors gracefully."""
+        inner_app = _make_asgi_app(200)
+        middleware = MetricsMiddleware(inner_app)
+        send = AsyncMock()
 
         with patch("src.middleware.metrics.metrics_collector") as mock_collector:
             mock_collector.record_api_metrics.side_effect = Exception("Metrics error")
@@ -78,9 +103,24 @@ class TestMetricsMiddlewareDispatch:
                 mock_settings.api_debug = False
 
                 # Should not raise, just log error
-                result = await metrics_middleware.dispatch(mock_request, call_next)
+                await middleware(_make_scope(), AsyncMock(), send)
 
-        assert result == mock_response
+        # Verify the response was still sent to the client
+        assert send.called
+
+    @pytest.mark.asyncio
+    async def test_passthrough_non_http(self):
+        """Test that non-HTTP scopes are passed through."""
+        inner_app = AsyncMock()
+        middleware = MetricsMiddleware(inner_app)
+
+        scope = {"type": "lifespan"}
+        receive = AsyncMock()
+        send = AsyncMock()
+
+        await middleware(scope, receive, send)
+
+        inner_app.assert_called_once_with(scope, receive, send)
 
 
 class TestNormalizeEndpoint:

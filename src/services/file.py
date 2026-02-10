@@ -445,13 +445,19 @@ class FileService(FileServiceInterface):
         object_key = metadata["object_key"]
 
         try:
-            # Get object content
+            # Run entire download in executor to avoid blocking event loop
+            # (response.read() is synchronous network I/O that must not run on the main thread)
             loop = asyncio.get_event_loop()
-            response = await loop.run_in_executor(None, self.minio_client.get_object, self.bucket_name, object_key)
 
-            content = response.read()
-            response.close()
-            response.release_conn()
+            def _download() -> bytes:
+                response = self.minio_client.get_object(self.bucket_name, object_key)
+                try:
+                    return response.read()
+                finally:
+                    response.close()
+                    response.release_conn()
+
+            content = await loop.run_in_executor(None, _download)
 
             return content
 

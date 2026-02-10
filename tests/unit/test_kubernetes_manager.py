@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.services.kubernetes.manager import KubernetesManager
-from src.services.kubernetes.models import ExecutionResult, FileData, PodHandle, PoolConfig
+from src.services.kubernetes.models import ExecutionResult, FileData, JobHandle, PodHandle, PoolConfig
 
 
 @pytest.fixture
@@ -28,6 +28,7 @@ def mock_job_executor():
     """Create a mock job executor."""
     executor = MagicMock()
     executor.execute_with_job = AsyncMock()
+    executor.delete_job = AsyncMock()
     executor.close = AsyncMock()
     return executor
 
@@ -326,10 +327,18 @@ class TestExecuteCode:
     async def test_execute_code_with_job(
         self, kubernetes_manager, mock_pool_manager, mock_job_executor, sample_execution_result
     ):
-        """Test code execution using Job."""
+        """Test code execution using Job returns the job handle."""
+        mock_job_handle = JobHandle(
+            name="exec-rust-session-123-abc",
+            namespace="test-ns",
+            uid="job-uid-456",
+            language="rust",
+            session_id="session-123",
+            pod_ip="10.0.0.5",
+        )
         mock_pool_manager.uses_pool.return_value = False
         mock_pool_manager.acquire.return_value = None
-        mock_job_executor.execute_with_job.return_value = sample_execution_result
+        mock_job_executor.execute_with_job.return_value = (sample_execution_result, mock_job_handle)
 
         result, handle, source = await kubernetes_manager.execute_code(
             session_id="session-123",
@@ -338,7 +347,7 @@ class TestExecuteCode:
         )
 
         assert result is sample_execution_result
-        assert handle is None
+        assert handle is mock_job_handle
         assert source == "job"
         mock_job_executor.execute_with_job.assert_called_once()
 
@@ -389,6 +398,24 @@ class TestDestroyPod:
         await kubernetes_manager.destroy_pod(None)
 
         mock_pool_manager.release.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_destroy_pod_with_job_handle(self, kubernetes_manager, mock_pool_manager, mock_job_executor):
+        """Test destroying a JobHandle dispatches to job_executor.delete_job."""
+        job_handle = JobHandle(
+            name="exec-go-session-abc",
+            namespace="test-ns",
+            uid="job-uid-789",
+            language="go",
+            session_id="session-456",
+        )
+        kubernetes_manager._active_handles["session-456"] = job_handle
+
+        await kubernetes_manager.destroy_pod(job_handle)
+
+        mock_job_executor.delete_job.assert_called_once_with(job_handle)
+        mock_pool_manager.release.assert_not_called()
+        assert "session-456" not in kubernetes_manager._active_handles
 
 
 class TestCopyFilesToPod:

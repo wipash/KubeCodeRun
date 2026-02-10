@@ -43,7 +43,6 @@ class SecurityMiddleware:
         # Helper to add security headers to a response message
         def add_security_headers(message):
             if message["type"] == "http.response.start":
-                headers = dict(message.get("headers", []))
                 path = scope.get("path", "")
 
                 # Base security headers
@@ -77,10 +76,11 @@ class SecurityMiddleware:
                 else:
                     security_headers[b"content-security-policy"] = b"default-src 'self'"
 
-                for key, value in security_headers.items():
-                    headers[key] = value
-
-                message["headers"] = list(headers.items())
+                # Preserve existing headers (avoid dict round-trip that drops duplicates
+                # like multiple Set-Cookie values), then append security headers
+                headers = [(k, v) for k, v in message.get("headers", []) if k not in security_headers]
+                headers.extend(security_headers.items())
+                message["headers"] = headers
 
         # Wrapper to intercept and add headers to any response
         async def send_wrapper(message):

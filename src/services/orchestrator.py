@@ -157,8 +157,8 @@ class ExecutionOrchestrator:
             # Step 7: Build response
             response = self._build_response(ctx)
 
-            # Step 8: Cleanup
-            await self._cleanup(ctx)
+            # Step 8: Cleanup (fire-and-forget to avoid blocking the response)
+            asyncio.create_task(self._cleanup(ctx))
 
             return response
 

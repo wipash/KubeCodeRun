@@ -371,6 +371,9 @@ class KubernetesManager:
                     f"{handle.sidecar_url}/files/{path}",
                 )
                 if response.status_code == 200:
+                    content_type = response.headers.get("content-type", "")
+                    if isinstance(content_type, str) and "application/json" in content_type:
+                        return None
                     return response.content
             except Exception as e:
                 logger.error(

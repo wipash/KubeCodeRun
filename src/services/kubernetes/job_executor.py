@@ -413,10 +413,11 @@ class JobExecutor:
         files: list[FileData] | None = None,
         initial_state: str | None = None,
         capture_state: bool = False,
-    ) -> ExecutionResult:
-        """Execute code by creating a job, waiting for ready, executing, and cleaning up.
+    ) -> tuple[ExecutionResult, JobHandle | None]:
+        """Execute code by creating a job, waiting for ready, and executing.
 
         This is the main entry point for job-based execution.
+        The caller is responsible for cleaning up the job via the returned handle.
 
         Args:
             spec: Pod specification
@@ -428,7 +429,7 @@ class JobExecutor:
             capture_state: Whether to capture state
 
         Returns:
-            ExecutionResult
+            Tuple of (ExecutionResult, JobHandle or None)
         """
         job = None
         try:
@@ -443,7 +444,7 @@ class JobExecutor:
                     stdout="",
                     stderr="Job pod failed to start",
                     execution_time_ms=0,
-                )
+                ), job
 
             # Log the job state before executing
             logger.info(
@@ -473,9 +474,10 @@ class JobExecutor:
                 stderr_preview=result.stderr[:200] if result.stderr else "",
             )
 
-            return result
+            return result, job
 
-        finally:
-            # Clean up job (TTL will also handle this)
+        except Exception:
+            # Clean up job on error — caller won't get the handle
             if job:
                 asyncio.create_task(self.delete_job(job))
+            raise

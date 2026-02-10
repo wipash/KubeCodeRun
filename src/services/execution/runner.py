@@ -21,7 +21,7 @@ from ...models import (
     OutputType,
 )
 from ...utils.id_generator import generate_execution_id
-from ..kubernetes import ExecutionResult, KubernetesManager, PodHandle
+from ..kubernetes import ExecutionResult, JobHandle, KubernetesManager, PodHandle
 from ..metrics import ExecutionMetrics, metrics_collector
 from .output import OutputProcessor
 
@@ -180,15 +180,21 @@ class CodeExecutionRunner:
             # Process outputs
             outputs = self._process_outputs(result.stdout, result.stderr, end_time)
 
-            # For pod-based execution, check for generated files
+            # Check for generated files
             generated_files = []
             if handle:
-                # Only detect files if code likely generates files
-                should_detect_files = files or any(
-                    kw in request.code for kw in ["open(", "savefig", "to_csv", "write(", ".save("]
-                )
-                if should_detect_files:
+                if container_source == "job":
+                    # Always detect files for jobs — keyword heuristic is
+                    # Python-centric and the HTTP call cost is negligible
+                    # vs job cold-start time
                     generated_files = await self._detect_generated_files(handle)
+                else:
+                    # Only detect files if code likely generates files
+                    should_detect_files = files or any(
+                        kw in request.code for kw in ["open(", "savefig", "to_csv", "write(", ".save("]
+                    )
+                    if should_detect_files:
+                        generated_files = await self._detect_generated_files(handle)
 
             mounted_filenames = self._get_mounted_filenames(files)
             filtered_files = self._filter_generated_files(generated_files, mounted_filenames)
@@ -332,7 +338,7 @@ class CodeExecutionRunner:
         except Exception as e:
             logger.error("Failed to record execution metrics", error=str(e))
 
-    async def _detect_generated_files(self, handle: PodHandle) -> list[dict[str, Any]]:
+    async def _detect_generated_files(self, handle: PodHandle | JobHandle) -> list[dict[str, Any]]:
         """Detect files generated during execution via sidecar HTTP API."""
         if not handle or not handle.pod_ip:
             return []
@@ -350,6 +356,8 @@ class CodeExecutionRunner:
                         # Skip code files
                         name = f.get("name", "")
                         if name.startswith("code.") or name == "Code.java":
+                            continue
+                        if f.get("is_file") is False:
                             continue
                         if f.get("size", 0) > settings.max_file_size_mb * 1024 * 1024:
                             continue

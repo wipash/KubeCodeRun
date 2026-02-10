@@ -157,8 +157,8 @@ class ExecutionOrchestrator:
             # Step 7: Build response
             response = self._build_response(ctx)
 
-            # Step 8: Cleanup
-            await self._cleanup(ctx)
+            # Step 8: Cleanup (fire-and-forget to avoid blocking the response)
+            asyncio.create_task(self._cleanup(ctx))
 
             return response
 
@@ -297,6 +297,7 @@ class ExecutionOrchestrator:
 
         mounted = []
         mounted_ids = set()
+        failed_files: list[str] = []
 
         for file_ref in ctx.request.files:
             # Get file info - try by ID first
@@ -317,6 +318,7 @@ class ExecutionOrchestrator:
                     file_id=file_ref.id,
                     name=file_ref.name,
                 )
+                failed_files.append(f"{file_ref.id} ({file_ref.name})")
                 continue
 
             # Skip duplicates
@@ -334,6 +336,7 @@ class ExecutionOrchestrator:
                     file_id=file_info.file_id,
                     filename=file_info.filename,
                 )
+                failed_files.append(f"{file_ref.id} ({file_ref.name})")
                 continue
 
             mounted.append(
@@ -355,6 +358,9 @@ class ExecutionOrchestrator:
                 filename=file_info.filename,
                 size=len(content),
             )
+
+        if failed_files:
+            raise ValidationError(message=f"Failed to mount {len(failed_files)} file(s): {', '.join(failed_files)}")
 
         return mounted
 
@@ -503,6 +509,9 @@ class ExecutionOrchestrator:
                 # Get file content from container (use ctx.container directly, no session lookup)
                 file_content = await self._get_file_from_container(ctx.container, file_path)
 
+                if file_content is None:
+                    continue
+
                 # Store the file
                 file_id = await self.file_service.store_execution_output_file(ctx.session_id, filename, file_content)
 
@@ -519,7 +528,7 @@ class ExecutionOrchestrator:
 
         return generated
 
-    async def _get_file_from_container(self, container: Any, file_path: str) -> bytes:
+    async def _get_file_from_container(self, container: Any, file_path: str) -> bytes | None:
         """Get file content from the execution pod via sidecar HTTP API.
 
         Args:
@@ -527,18 +536,13 @@ class ExecutionOrchestrator:
             file_path: Path to file inside pod (e.g., /mnt/data/output.png)
         """
         if not container:
-            return f"# Pod not found for file: {file_path}\n".encode()
+            return None
 
         # Extract filename from path
         filename = file_path.split("/")[-1] if "/" in file_path else file_path
 
         kubernetes_manager = self.execution_service.kubernetes_manager
-        content = await kubernetes_manager.copy_file_from_pod(container, filename)
-
-        if content:
-            return content
-        else:
-            return f"# Failed to retrieve file: {file_path}\n".encode()
+        return await kubernetes_manager.copy_file_from_pod(container, filename)
 
     def _extract_outputs(self, ctx: ExecutionContext) -> None:
         """Extract stdout and stderr from execution outputs."""

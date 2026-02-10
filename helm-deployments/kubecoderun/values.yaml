@@ -149,6 +149,11 @@ api:
     enabled: false
     origins: []
 
+  # Keep-alive timeout (seconds) for idle HTTP connections.
+  # Must exceed the client's keep-alive timeout to prevent socket hang-ups
+  # on long-running requests (e.g. job-executor cold starts).
+  timeoutKeepAlive: 75
+
   # Health checks
   healthCheck:
     interval: 30

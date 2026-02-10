@@ -20,6 +20,7 @@ from .job_executor import JobExecutor
 from .models import (
     ExecutionResult,
     FileData,
+    JobHandle,
     PodHandle,
     PodSpec,
     PoolConfig,
@@ -97,7 +98,7 @@ class KubernetesManager:
         }
 
         # Track active executions
-        self._active_handles: dict[str, PodHandle] = {}  # session_id -> handle
+        self._active_handles: dict[str, PodHandle | JobHandle] = {}  # session_id -> handle
 
         self._started = False
 
@@ -282,7 +283,7 @@ class KubernetesManager:
                 network_isolated=self.network_isolated,
             )
 
-            result = await self._job_executor.execute_with_job(
+            result, job_handle = await self._job_executor.execute_with_job(
                 spec,
                 session_id,
                 code,
@@ -291,13 +292,13 @@ class KubernetesManager:
                 initial_state=initial_state,
                 capture_state=capture_state,
             )
-            return result, None, "job"
+            return result, job_handle, "job"
 
-    async def destroy_pod(self, handle: PodHandle):
-        """Destroy an execution pod.
+    async def destroy_pod(self, handle: PodHandle | JobHandle):
+        """Destroy an execution pod or job.
 
         Args:
-            handle: Pod handle to destroy
+            handle: Pod or job handle to destroy
         """
         if not handle:
             return
@@ -306,12 +307,15 @@ class KubernetesManager:
         if handle.session_id and handle.session_id in self._active_handles:
             del self._active_handles[handle.session_id]
 
-        # Release from pool (with destroy=True)
-        await self._pool_manager.release(handle, destroy=True)
+        if isinstance(handle, JobHandle):
+            await self._job_executor.delete_job(handle)
+        else:
+            # Release from pool (with destroy=True)
+            await self._pool_manager.release(handle, destroy=True)
 
     async def copy_files_to_pod(
         self,
-        handle: PodHandle,
+        handle: PodHandle | JobHandle,
         files: list[FileData],
     ) -> bool:
         """Copy files to a pod.
@@ -348,7 +352,7 @@ class KubernetesManager:
 
     async def copy_file_from_pod(
         self,
-        handle: PodHandle,
+        handle: PodHandle | JobHandle,
         path: str,
     ) -> bytes | None:
         """Copy a file from a pod.
@@ -371,6 +375,9 @@ class KubernetesManager:
                     f"{handle.sidecar_url}/files/{path}",
                 )
                 if response.status_code == 200:
+                    content_type = response.headers.get("content-type", "")
+                    if isinstance(content_type, str) and "application/json" in content_type:
+                        return None
                     return response.content
             except Exception as e:
                 logger.error(
@@ -388,7 +395,7 @@ class KubernetesManager:
 
     async def destroy_pods_batch(
         self,
-        handles: list[PodHandle],
+        handles: list[PodHandle | JobHandle],
     ) -> int:
         """Destroy multiple pods.
 

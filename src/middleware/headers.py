@@ -42,13 +42,15 @@ class SecurityHeadersMiddleware:
 
         async def send_wrapper(message):
             if message["type"] == "http.response.start":
-                headers = dict(message.get("headers", []))
-
-                # Add security headers
-                for key, value in self.SECURITY_HEADERS.items():
-                    headers[key] = value
-
-                message["headers"] = list(headers.items())
+                # Preserve existing headers (avoid dict round-trip that drops duplicates
+                # like multiple Set-Cookie values), then append security headers
+                headers = [
+                    (k, v)
+                    for k, v in message.get("headers", [])
+                    if k not in self.SECURITY_HEADERS
+                ]
+                headers.extend(self.SECURITY_HEADERS.items())
+                message["headers"] = headers
 
             await send(message)
 

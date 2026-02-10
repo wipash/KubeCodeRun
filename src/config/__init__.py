@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     api_port: int = Field(default=8000, ge=1, le=65535)
     api_debug: bool = Field(default=False)
     api_reload: bool = Field(default=False)
+    api_timeout_keep_alive: int = Field(default=75, ge=5, le=600)
 
     # SSL/HTTPS Configuration
     enable_https: bool = Field(default=False)
@@ -455,6 +456,7 @@ class Settings(BaseSettings):
             api_port=self.api_port,
             api_debug=self.api_debug,
             api_reload=self.api_reload,
+            api_timeout_keep_alive=self.api_timeout_keep_alive,
             enable_https=self.enable_https,
             https_port=self.https_port,
             ssl_cert_file=self.ssl_cert_file,

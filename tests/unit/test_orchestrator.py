@@ -501,7 +501,7 @@ class TestMountFilesExtended:
 
     @pytest.mark.asyncio
     async def test_mount_files_file_not_found(self, orchestrator, mock_file_service):
-        """Test mounting files when file is not found."""
+        """Test mounting files when file is not found raises ValidationError."""
         from src.models.exec import RequestFile
 
         mock_file_service.get_file_info.return_value = None
@@ -511,9 +511,8 @@ class TestMountFilesExtended:
         request = ExecRequest(code="print('hello')", lang="python", files=[request_file])
         ctx = ExecutionContext(request=request, request_id="req-123")
 
-        result = await orchestrator._mount_files(ctx)
-
-        assert result == []
+        with pytest.raises(ValidationError):
+            await orchestrator._mount_files(ctx)
 
     @pytest.mark.asyncio
     async def test_mount_files_lookup_by_name(self, orchestrator, mock_file_service):
@@ -950,7 +949,7 @@ class TestGetFileFromContainer:
         """Test getting file when container is None."""
         result = await orchestrator._get_file_from_container(None, "/mnt/data/test.txt")
 
-        assert b"Pod not found" in result
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_get_file_success(self, orchestrator, mock_execution_service):
@@ -975,7 +974,7 @@ class TestGetFileFromContainer:
 
         result = await orchestrator._get_file_from_container(mock_container, "/mnt/data/test.txt")
 
-        assert b"Failed to retrieve" in result
+        assert result is None
 
 
 class TestExtractOutputs:

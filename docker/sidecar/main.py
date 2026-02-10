@@ -68,6 +68,7 @@ class FileInfo(BaseModel):
     path: str
     size: int
     mime_type: str | None = None
+    is_file: bool = True
 
 
 def validate_path_within_working_dir(path: str) -> Path:
@@ -208,7 +209,7 @@ def apply_network_isolation_overrides(env: dict[str, str], language: str) -> dic
     if language in ("go",):
         env["GOPROXY"] = "off"
         env["GOSUMDB"] = "off"
-        print(f"[EXECUTE] Network isolation: overriding GOPROXY=off, GOSUMDB=off", flush=True)
+        print("[EXECUTE] Network isolation: overriding GOPROXY=off, GOSUMDB=off", flush=True)
 
     # Future: Add overrides for other languages as needed
     # - Rust: CARGO_NET_OFFLINE=true
@@ -362,7 +363,7 @@ async def execute_via_nsenter(request: ExecuteRequest) -> ExecuteResponse:
         print(f"[EXECUTE] code_file={temp_file}, exists={temp_file.exists()}, size={temp_file.stat().st_size if temp_file.exists() else 0}", flush=True)
 
     try:
-        print(f"[EXECUTE] Creating subprocess...", flush=True)
+        print("[EXECUTE] Creating subprocess...", flush=True)
         proc = await asyncio.create_subprocess_exec(
             *nsenter_cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -516,10 +517,12 @@ async def list_files():
 
     files = []
     for item in working_path.iterdir():
+        if not item.is_file():
+            continue
         files.append(FileInfo(
             name=item.name,
             path=item.name,
-            size=item.stat().st_size if item.is_file() else 0,
+            size=item.stat().st_size,
         ))
     return {"files": [f.model_dump() for f in files]}
 
@@ -528,21 +531,12 @@ async def list_files():
 async def download_file(path: str):
     """Download a file from the working directory."""
     file_path = validate_path_within_working_dir(path)
-    working_path = Path(WORKING_DIR).resolve()
 
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
 
     if file_path.is_dir():
-        # List directory contents
-        files = []
-        for item in file_path.iterdir():
-            files.append(FileInfo(
-                name=item.name,
-                path=str(item.relative_to(working_path)),
-                size=item.stat().st_size if item.is_file() else 0,
-            ))
-        return {"files": [f.model_dump() for f in files]}
+        raise HTTPException(status_code=400, detail="Path is a directory, not a file")
 
     return FileResponse(file_path)
 

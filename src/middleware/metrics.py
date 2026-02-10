@@ -37,9 +37,25 @@ class MetricsMiddleware:
         request = Request(scope, receive)
         start_time = time.time()
         response_status = None
+        response_body_sent = False
+        client_disconnected = False
+
+        # Monitor for client disconnect during processing
+        async def receive_wrapper():
+            nonlocal client_disconnected
+            message = await receive()
+            if message.get("type") == "http.disconnect":
+                client_disconnected = True
+                logger.warning(
+                    "Client disconnected during request processing",
+                    method=request.method,
+                    path=request.url.path,
+                    elapsed_ms=round((time.time() - start_time) * 1000, 2),
+                )
+            return message
 
         async def send_wrapper(message):
-            nonlocal response_status
+            nonlocal response_status, response_body_sent
             if message["type"] == "http.response.start":
                 response_status = message["status"]
 
@@ -50,11 +66,38 @@ class MetricsMiddleware:
                     headers.append((b"x-response-time-ms", str(round(response_time_ms, 2)).encode()))
                     message["headers"] = headers
 
-            await send(message)
+            elif message["type"] == "http.response.body":
+                more_body = message.get("more_body", False)
+                if not more_body:
+                    response_body_sent = True
+
+            try:
+                await send(message)
+            except Exception as e:
+                logger.error(
+                    "Failed to send response to client",
+                    method=request.method,
+                    path=request.url.path,
+                    message_type=message.get("type"),
+                    elapsed_ms=round((time.time() - start_time) * 1000, 2),
+                    error=str(e),
+                )
+                raise
 
         try:
-            await self.app(scope, receive, send_wrapper)
+            await self.app(scope, receive_wrapper, send_wrapper)
         finally:
+            # Log diagnostic info for requests where the response body
+            # was not confirmed sent (indicates socket hang-up scenario)
+            if not response_body_sent and response_status is not None:
+                logger.warning(
+                    "Response headers sent but body not confirmed",
+                    method=request.method,
+                    path=request.url.path,
+                    status=response_status,
+                    client_disconnected=client_disconnected,
+                    elapsed_ms=round((time.time() - start_time) * 1000, 2),
+                )
             response_time_ms = (time.time() - start_time) * 1000
             normalized_endpoint = self._normalize_endpoint(request.url.path)
 

@@ -1,11 +1,13 @@
 # Document processing - PDF
 pdf2image>=1.17.0
 pdfminer.six>=20231228
+pdfminer>=20191125
+pymupdf>=1.27.1
 pypdf>=5.1.0
 PyPDF2>=3.0.1
 reportlab>=4.2.5
 
-# Document processing - Office (Excel, PowerPoint, Word)
+# Office documents
 docx2python>=3.1.1
 docx2txt>=0.8
 docxcompose>=1.4.0
@@ -14,6 +16,7 @@ mammoth>=1.8.0
 openpyxl>=3.1.5
 python-docx>=1.1.2
 python-pptx>=1.0.2
+doc2pdf>=0.2
 
 # Document processing - XML/HTML
 beautifulsoup4>=4.12.3
@@ -32,3 +35,14 @@ pyparsing>=3.2.1
 python-frontmatter>=1.1.0
 pyyaml>=6.0.2
 toml>=0.10.2
+textract-py3>=1.5
+pytesseract>=0.3
+pypandoc>=1.12
+
+# Other formats
+vsdx>=0.5
+compressed-rtf>=1.0
+extract-msg>=0.47
+olefile>=0.47
+ebcdic>=1.1
+ExifRead>=3.0

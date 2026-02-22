@@ -266,11 +266,27 @@ class TestListFiles:
 
         result = await list_files(
             session_id="session-123",
+            response=Response(),
             detail=None,
             file_service=mock_file_service,
         )
 
         assert result == []
+
+    @pytest.mark.asyncio
+    async def test_list_files_sets_connection_close(self, mock_file_service):
+        """Test that list_files sets Connection: close header to prevent socket reuse."""
+        mock_file_service.list_files.return_value = []
+        resp = Response()
+
+        await list_files(
+            session_id="session-123",
+            response=resp,
+            detail=None,
+            file_service=mock_file_service,
+        )
+
+        assert resp.headers.get("connection") == "close"
 
     @pytest.mark.asyncio
     async def test_list_files_full_details(self, mock_file_service, mock_file_info):
@@ -279,6 +295,7 @@ class TestListFiles:
 
         result = await list_files(
             session_id="session-123",
+            response=Response(),
             detail=None,
             file_service=mock_file_service,
         )
@@ -294,6 +311,7 @@ class TestListFiles:
 
         result = await list_files(
             session_id="session-123",
+            response=Response(),
             detail="simple",
             file_service=mock_file_service,
         )
@@ -310,6 +328,7 @@ class TestListFiles:
 
         result = await list_files(
             session_id="session-123",
+            response=Response(),
             detail="summary",
             file_service=mock_file_service,
         )
@@ -326,6 +345,7 @@ class TestListFiles:
         with pytest.raises(HTTPException) as exc_info:
             await list_files(
                 session_id="session-123",
+                response=Response(),
                 detail=None,
                 file_service=mock_file_service,
             )

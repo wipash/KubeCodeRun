@@ -82,10 +82,20 @@ async def execute_code(
     # Execute via orchestrator (handles validation, session, files, execution, cleanup)
     response = await orchestrator.execute(request, request_id, api_key_hash=api_key_hash, is_env_key=is_env_key)
 
+    # Check if client disconnected during execution (diagnostic for socket hang-up)
+    disconnected = await http_request.is_disconnected()
+    if disconnected:
+        logger.warning(
+            "Client disconnected before response could be sent",
+            request_id=request_id,
+            session_id=response.session_id,
+        )
+
     logger.info(
         "Code execution completed",
         request_id=request_id,
         session_id=response.session_id,
+        client_disconnected=disconnected,
     )
 
     return response

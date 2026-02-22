@@ -8,8 +8,8 @@ from urllib.parse import quote
 
 # Third-party imports
 import structlog
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import Response, StreamingResponse
+from fastapi import APIRouter, File, Form, HTTPException, Query, Response, UploadFile
+from fastapi.responses import StreamingResponse
 from unidecode import unidecode
 
 # Local application imports
@@ -164,6 +164,7 @@ async def upload_file(
 @router.get("/files/{session_id}")
 async def list_files(
     session_id: str,
+    response: Response,
     detail: str | None = Query(
         None,
         description="Detail level: 'simple' for basic info, otherwise full details",
@@ -171,6 +172,14 @@ async def list_files(
     file_service: FileServiceDep = None,
 ):
     """List all files in a session with optional detail parameter - LibreChat compatible."""
+    # Prevent HTTP keep-alive socket reuse for this endpoint.
+    # LibreChat's getSessionInfo() calls GET /files with a 5s axios timeout, which sets
+    # socket.setTimeout(5000) on the underlying TCP socket. When that socket is reused
+    # via keep-alive for the subsequent POST /exec (node-fetch, no timeout), the 5s
+    # timeout persists and fires during long-running executions → "socket hang up".
+    # Sending Connection: close forces a fresh socket for the next request.
+    response.headers["Connection"] = "close"
+
     try:
         files = await file_service.list_files(session_id)
 

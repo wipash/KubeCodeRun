@@ -15,6 +15,7 @@ from src.models import (
 )
 from src.services.execution.runner import CodeExecutionRunner
 from src.services.kubernetes import ExecutionResult, PodHandle
+from src.services.kubernetes.models import JobHandle
 
 
 @pytest.fixture
@@ -903,3 +904,83 @@ class TestRecordMetrics:
 
             # Should not raise
             runner._record_metrics(execution, "session-456", "python", None)
+
+
+class TestJobFileDetection:
+    """Tests for file detection with job-sourced executions."""
+
+    @pytest.mark.asyncio
+    async def test_file_detection_runs_for_job_source(self, runner, mock_kubernetes_manager):
+        """Test that file detection runs for job-sourced executions without keyword heuristic."""
+        job_handle = JobHandle(
+            name="exec-go-session-abc",
+            namespace="test-ns",
+            uid="job-uid-123",
+            language="go",
+            session_id="session-123",
+            pod_ip="10.0.0.5",
+        )
+        result = ExecutionResult(
+            stdout="output",
+            stderr="",
+            exit_code=0,
+            execution_time_ms=3000,
+        )
+        # Code has no Python file keywords — would NOT trigger heuristic
+        request = ExecuteCodeRequest(code='fmt.Println("hello")', language="go")
+        mock_kubernetes_manager.execute_code.return_value = (result, job_handle, "job")
+
+        with patch("src.services.execution.runner.metrics_collector"):
+            with patch.object(runner, "_detect_generated_files", return_value=[]) as mock_detect:
+                await runner.execute("session-123", request)
+
+        # File detection should still be called despite no keywords
+        mock_detect.assert_called_once_with(job_handle)
+
+    @pytest.mark.asyncio
+    async def test_keyword_heuristic_skipped_for_jobs(self, runner, mock_kubernetes_manager):
+        """Test that the keyword heuristic is skipped for job-sourced executions."""
+        job_handle = JobHandle(
+            name="exec-rust-session-abc",
+            namespace="test-ns",
+            uid="job-uid-456",
+            language="rust",
+            session_id="session-123",
+            pod_ip="10.0.0.6",
+        )
+        result = ExecutionResult(
+            stdout="",
+            stderr="",
+            exit_code=0,
+            execution_time_ms=5000,
+        )
+        # Code with no file-related keywords at all
+        request = ExecuteCodeRequest(code='println!("no files here")', language="rust")
+        mock_kubernetes_manager.execute_code.return_value = (result, job_handle, "job")
+
+        with patch("src.services.execution.runner.metrics_collector"):
+            with patch.object(runner, "_detect_generated_files", return_value=[]) as mock_detect:
+                await runner.execute("session-123", request)
+
+        mock_detect.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_keyword_heuristic_still_applies_for_pool(self, runner, mock_kubernetes_manager):
+        """Test that the keyword heuristic still applies for pool-sourced executions."""
+        mock_handle = MagicMock(pod_ip="10.0.0.1")
+        result = ExecutionResult(
+            stdout="42",
+            stderr="",
+            exit_code=0,
+            execution_time_ms=50,
+        )
+        # Code with no file keywords
+        request = ExecuteCodeRequest(code="print(42)", language="python")
+        mock_kubernetes_manager.execute_code.return_value = (result, mock_handle, "pool_hit")
+
+        with patch("src.services.execution.runner.metrics_collector"):
+            with patch.object(runner, "_detect_generated_files", return_value=[]) as mock_detect:
+                await runner.execute("session-123", request)
+
+        # File detection should NOT be called — no keywords and no files
+        mock_detect.assert_not_called()

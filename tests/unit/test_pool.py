@@ -837,11 +837,10 @@ class TestPodPoolReplenishLoop:
             return None
 
         with patch.object(pod_pool, "_create_warm_pod", side_effect=mock_create):
-            with patch("asyncio.sleep", new_callable=AsyncMock):
-                try:
-                    await asyncio.wait_for(pod_pool._replenish_loop(), timeout=1)
-                except TimeoutError:
-                    pass
+            try:
+                await asyncio.wait_for(pod_pool._replenish_loop(), timeout=2)
+            except TimeoutError:
+                pass
 
         assert call_count > 0
 
@@ -849,31 +848,31 @@ class TestPodPoolReplenishLoop:
     async def test_replenish_loop_handles_exception(self, pod_pool):
         """Test replenish loop handles exception gracefully."""
         pod_pool._running = True
-        iteration = 0
-
-        async def mock_sleep(_):
-            nonlocal iteration
-            iteration += 1
-            if iteration >= 2:
-                pod_pool._running = False
+        call_count = 0
 
         async def mock_create():
+            nonlocal call_count
+            call_count += 1
+            if call_count >= 2:
+                pod_pool._running = False
             raise Exception("Create failed")
 
         with patch.object(pod_pool, "_create_warm_pod", side_effect=mock_create):
-            with patch("asyncio.sleep", side_effect=mock_sleep):
-                # Should not raise
-                await pod_pool._replenish_loop()
+            try:
+                await asyncio.wait_for(pod_pool._replenish_loop(), timeout=2)
+            except TimeoutError:
+                pass
 
     @pytest.mark.asyncio
     async def test_replenish_loop_cancelled_error(self, pod_pool):
         """Test replenish loop handles CancelledError."""
         pod_pool._running = True
 
-        async def mock_sleep(_):
+        async def mock_wait_for(coro, **kwargs):
+            coro.close()
             raise asyncio.CancelledError()
 
-        with patch("asyncio.sleep", side_effect=mock_sleep):
+        with patch("asyncio.wait_for", side_effect=mock_wait_for):
             # Should break out of loop on CancelledError
             await pod_pool._replenish_loop()
 
@@ -907,9 +906,9 @@ class TestPodPoolHealthCheckLoop:
 
     @pytest.mark.asyncio
     async def test_health_check_loop_unhealthy_pod(self, pod_pool, pooled_pod):
-        """Test health check loop removes unhealthy pod."""
+        """Test health check loop removes unhealthy pod after 2 failures."""
         pod_pool._running = True
-        pooled_pod.health_check_failures = 2  # One more failure will trigger removal
+        pooled_pod.health_check_failures = 1  # One more failure will trigger removal (threshold=2)
         pod_pool._pods[pooled_pod.handle.uid] = pooled_pod
         iteration = 0
 
@@ -1141,6 +1140,326 @@ class TestPoolConfigResources:
         assert config.sidecar_memory_limit == "512Mi"  # Default
         assert config.sidecar_cpu_request == "100m"  # Default
         assert config.sidecar_memory_request == "256Mi"  # Default
+
+
+class TestPodPoolReplenishEvent:
+    """Tests for event-driven replenishment signaling."""
+
+    def test_init_creates_replenish_event(self, pod_pool):
+        """Test that __init__ creates _replenish_event."""
+        assert isinstance(pod_pool._replenish_event, asyncio.Event)
+        assert not pod_pool._replenish_event.is_set()
+
+    @pytest.mark.asyncio
+    async def test_release_destroy_signals_replenish(self, pod_pool, pooled_pod):
+        """Test that release(destroy=True) signals _replenish_event."""
+        pooled_pod.handle.session_id = "session-123"
+        pod_pool._pods[pooled_pod.handle.uid] = pooled_pod
+        pod_pool._session_pods["session-123"] = pooled_pod.handle.uid
+
+        with patch.object(pod_pool, "_delete_pod", new_callable=AsyncMock):
+            await pod_pool.release(pooled_pod.handle, destroy=True)
+
+        assert pod_pool._replenish_event.is_set()
+
+    @pytest.mark.asyncio
+    async def test_release_no_destroy_does_not_signal_replenish(self, pod_pool, pooled_pod):
+        """Test that release(destroy=False) does not signal _replenish_event."""
+        pooled_pod.handle.session_id = "session-123"
+        pooled_pod.acquired = True
+        pod_pool._pods[pooled_pod.handle.uid] = pooled_pod
+        pod_pool._session_pods["session-123"] = pooled_pod.handle.uid
+
+        await pod_pool.release(pooled_pod.handle, destroy=False)
+
+        assert not pod_pool._replenish_event.is_set()
+
+    @pytest.mark.asyncio
+    async def test_acquire_signals_replenish(self, pod_pool, pooled_pod):
+        """Test that acquire() signals _replenish_event after successful acquisition."""
+        pod_pool._pods[pooled_pod.handle.uid] = pooled_pod
+        await pod_pool._available.put(pooled_pod.handle.uid)
+
+        result = await pod_pool.acquire("session-123", timeout=5)
+
+        assert result is not None
+        assert pod_pool._replenish_event.is_set()
+
+    @pytest.mark.asyncio
+    async def test_acquire_stale_signals_replenish(self, pod_pool):
+        """Test that acquire() signals _replenish_event when encountering stale entry."""
+        # Put a stale UID (not in _pods)
+        await pod_pool._available.put("stale-uid")
+
+        # This will skip the stale entry, signal replenish, then timeout
+        result = await pod_pool.acquire("session-123", timeout=0.1)
+
+        assert result is None
+        # Event should have been set when stale entry was found
+        assert pod_pool._replenish_event.is_set()
+
+    @pytest.mark.asyncio
+    async def test_health_check_removal_signals_replenish(self, pod_pool, pooled_pod):
+        """Test that _health_check_loop signals _replenish_event after removing unhealthy pods."""
+        pod_pool._running = True
+        pooled_pod.health_check_failures = 1  # One more failure triggers removal
+        pod_pool._pods[pooled_pod.handle.uid] = pooled_pod
+        iteration = 0
+
+        async def mock_sleep(_):
+            nonlocal iteration
+            iteration += 1
+            if iteration >= 2:
+                pod_pool._running = False
+
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with patch.object(pod_pool, "_get_http_client", return_value=mock_client):
+            with patch.object(pod_pool, "_delete_pod", new_callable=AsyncMock):
+                with patch("asyncio.sleep", side_effect=mock_sleep):
+                    await pod_pool._health_check_loop()
+
+        assert pod_pool._replenish_event.is_set()
+
+    @pytest.mark.asyncio
+    async def test_replenish_loop_wakes_on_event(self, pod_pool):
+        """Test that _replenish_loop wakes up when event is signaled."""
+        pod_pool._running = True
+        create_calls = 0
+
+        async def mock_create():
+            nonlocal create_calls
+            create_calls += 1
+            return None
+
+        # Pool needs pods (empty pool, pool_size=2), so it'll create on each iteration
+        with patch.object(pod_pool, "_create_warm_pod", side_effect=mock_create):
+            # Signal the event after a short delay to wake up the loop faster than 5s
+            async def signal_and_stop():
+                await asyncio.sleep(0.1)
+                pod_pool._replenish_event.set()
+                await asyncio.sleep(0.1)
+                pod_pool._running = False
+
+            signal_task = asyncio.create_task(signal_and_stop())
+            try:
+                await asyncio.wait_for(pod_pool._replenish_loop(), timeout=2)
+            except TimeoutError:
+                pass
+            await signal_task
+
+        # Should have been called at least once (parallel creation)
+        assert create_calls >= 2
+
+
+class TestPodPoolParallelReplenish:
+    """Tests for parallel pod creation in replenish loop."""
+
+    @pytest.mark.asyncio
+    async def test_replenish_creates_pods_in_parallel(self, pod_pool):
+        """Test that replenish loop creates pods via gather (parallel)."""
+        pod_pool._running = True
+        timestamps = []
+
+        async def mock_create():
+            timestamps.append(asyncio.get_event_loop().time())
+            await asyncio.sleep(0.05)
+            return None
+
+        call_count = 0
+
+        original_gather = asyncio.gather
+
+        async def counting_gather(*coros, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return await original_gather(*coros, **kwargs)
+
+        with patch.object(pod_pool, "_create_warm_pod", side_effect=mock_create):
+            with patch("src.services.kubernetes.pool.asyncio.gather", side_effect=counting_gather):
+                # Signal stop after one iteration
+                async def stop_later():
+                    await asyncio.sleep(0.2)
+                    pod_pool._running = False
+
+                stop_task = asyncio.create_task(stop_later())
+                try:
+                    await asyncio.wait_for(pod_pool._replenish_loop(), timeout=2)
+                except TimeoutError:
+                    pass
+                await stop_task
+
+        # Should have created pods (pool_size=2, all needed)
+        assert len(timestamps) >= 2
+
+    @pytest.mark.asyncio
+    async def test_replenish_one_failure_doesnt_block_others(self, pod_pool):
+        """Test that one pod creation failure doesn't prevent others."""
+        pod_pool._running = True
+        successes = 0
+        failures = 0
+        call_count = 0
+
+        async def mock_create():
+            nonlocal call_count, successes, failures
+            call_count += 1
+            if call_count == 1:
+                failures += 1
+                raise Exception("Pod creation failed")
+            successes += 1
+            return None
+
+        async def stop_later():
+            await asyncio.sleep(0.2)
+            pod_pool._running = False
+
+        with patch.object(pod_pool, "_create_warm_pod", side_effect=mock_create):
+            stop_task = asyncio.create_task(stop_later())
+            try:
+                await asyncio.wait_for(pod_pool._replenish_loop(), timeout=2)
+            except TimeoutError:
+                pass
+            await stop_task
+
+        # Both should have been attempted
+        assert call_count >= 2
+        assert failures >= 1
+        assert successes >= 1
+
+
+class TestPodPoolAcquireRetry:
+    """Tests for acquire retry logic with stale queue entries."""
+
+    @pytest.mark.asyncio
+    async def test_acquire_skips_stale_returns_valid(self, pod_pool, pooled_pod):
+        """Test acquire skips stale UIDs and returns the next valid pod."""
+        # Put stale entry first, then valid entry
+        await pod_pool._available.put("stale-uid-1")
+        pod_pool._pods[pooled_pod.handle.uid] = pooled_pod
+        await pod_pool._available.put(pooled_pod.handle.uid)
+
+        result = await pod_pool.acquire("session-123", timeout=5)
+
+        assert result is not None
+        assert result.uid == pooled_pod.handle.uid
+        assert result.status == PodStatus.EXECUTING
+
+    @pytest.mark.asyncio
+    async def test_acquire_skips_multiple_stale_entries(self, pod_pool, pooled_pod):
+        """Test acquire skips multiple stale UIDs before finding valid."""
+        await pod_pool._available.put("stale-1")
+        await pod_pool._available.put("stale-2")
+        await pod_pool._available.put("stale-3")
+        pod_pool._pods[pooled_pod.handle.uid] = pooled_pod
+        await pod_pool._available.put(pooled_pod.handle.uid)
+
+        result = await pod_pool.acquire("session-123", timeout=5)
+
+        assert result is not None
+        assert result.uid == pooled_pod.handle.uid
+
+    @pytest.mark.asyncio
+    async def test_acquire_all_stale_then_timeout(self, pod_pool):
+        """Test acquire returns None when all entries are stale and timeout expires."""
+        await pod_pool._available.put("stale-1")
+        await pod_pool._available.put("stale-2")
+
+        result = await pod_pool.acquire("session-123", timeout=0.2)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_acquire_respects_deadline_across_retries(self, pod_pool):
+        """Test acquire respects overall deadline across stale retries."""
+        # Fill queue with many stale entries
+        for i in range(20):
+            await pod_pool._available.put(f"stale-{i}")
+
+        import time
+
+        start = time.monotonic()
+        result = await pod_pool.acquire("session-123", timeout=0.5)
+        elapsed = time.monotonic() - start
+
+        assert result is None
+        # Should not take much longer than the timeout
+        assert elapsed < 1.5
+
+
+class TestPodPoolHealthCheckTuning:
+    """Tests for health check interval and threshold tuning."""
+
+    @pytest.mark.asyncio
+    async def test_health_check_removes_after_2_failures(self, pod_pool, pooled_pod):
+        """Test pod is removed after 2 health check failures (not 3)."""
+        pod_pool._running = True
+        pooled_pod.health_check_failures = 0
+        pod_pool._pods[pooled_pod.handle.uid] = pooled_pod
+        iteration = 0
+
+        async def mock_sleep(_):
+            nonlocal iteration
+            iteration += 1
+            if iteration >= 3:
+                pod_pool._running = False
+
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with patch.object(pod_pool, "_get_http_client", return_value=mock_client):
+            with patch.object(pod_pool, "_delete_pod", new_callable=AsyncMock) as mock_delete:
+                with patch("asyncio.sleep", side_effect=mock_sleep):
+                    await pod_pool._health_check_loop()
+
+        # Pod should be removed after 2 failures
+        assert pooled_pod.handle.uid not in pod_pool._pods
+        mock_delete.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_health_check_not_removed_after_1_failure(self, pod_pool, pooled_pod):
+        """Test pod is NOT removed after only 1 health check failure."""
+        pod_pool._running = True
+        pooled_pod.health_check_failures = 0
+        pod_pool._pods[pooled_pod.handle.uid] = pooled_pod
+
+        async def mock_sleep(_):
+            # Stop after first iteration completes
+            pod_pool._running = False
+
+        mock_client = AsyncMock()
+        mock_response = MagicMock()
+        mock_response.status_code = 500
+        mock_client.get = AsyncMock(return_value=mock_response)
+
+        with patch.object(pod_pool, "_get_http_client", return_value=mock_client):
+            with patch.object(pod_pool, "_delete_pod", new_callable=AsyncMock) as mock_delete:
+                with patch("asyncio.sleep", side_effect=mock_sleep):
+                    await pod_pool._health_check_loop()
+
+        # Pod should still be in pool after 1 failure
+        assert pooled_pod.handle.uid in pod_pool._pods
+        assert pooled_pod.health_check_failures == 1
+        mock_delete.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_health_check_uses_15s_interval(self, pod_pool):
+        """Test health check loop sleeps for 15 seconds."""
+        pod_pool._running = True
+        sleep_values = []
+
+        async def mock_sleep(seconds):
+            sleep_values.append(seconds)
+            pod_pool._running = False
+
+        with patch("asyncio.sleep", side_effect=mock_sleep):
+            await pod_pool._health_check_loop()
+
+        assert sleep_values[0] == 15
 
 
 class TestSettingsPerLanguageResources:

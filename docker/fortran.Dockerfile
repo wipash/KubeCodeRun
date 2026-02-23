@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Fortran execution environment with Docker Hardened Images.
 
-FROM dhi.io/debian-base:trixie
+FROM dhi.io/debian-base:trixie-dev
 
 ARG BUILD_DATE
 ARG VERSION

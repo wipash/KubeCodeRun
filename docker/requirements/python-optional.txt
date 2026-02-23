@@ -1,0 +1,4 @@
+# Packages that may not have wheels for all architectures (e.g. ARM).
+# Installed as best-effort — build continues if these fail.
+
+gmsh>=4.15.1

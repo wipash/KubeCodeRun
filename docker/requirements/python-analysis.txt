@@ -1,4 +1,4 @@
-# Math, science, and analysis packages
+# Math, science, engineering, and analysis packages
 
 scipy>=1.11
 scikit-learn>=1.3
@@ -17,3 +17,6 @@ patsy>=0.5
 kiwisolver>=1.4
 joblib>=1.3
 threadpoolctl>=3.2
+gmsh>=4.15.1
+fortranformat>=2.0.3
+ezdxf>=1.4.3

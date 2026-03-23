@@ -70,10 +70,10 @@ class PodPool:
         # Background tasks
         self._replenish_task: asyncio.Task | None = None
         self._health_check_task: asyncio.Task | None = None
+        self._replenish_event = asyncio.Event()
+        # Keep the original attribute name as a compatibility alias for tests.
+        self._replenish_needed = self._replenish_event
         self._running = False
-
-        # Event to wake up the replenish loop immediately (issue #30)
-        self._replenish_needed = asyncio.Event()
 
     async def _get_http_client(self) -> httpx.AsyncClient:
         """Get or create HTTP client."""
@@ -309,7 +309,7 @@ class PodPool:
 
     def _signal_replenish(self):
         """Signal that pool replenishment is needed immediately."""
-        self._replenish_needed.set()
+        self._replenish_event.set()
 
     async def _replenish_loop(self):
         """Background task to maintain pool size.
@@ -320,19 +320,16 @@ class PodPool:
         """
         while self._running:
             try:
-                # Wait for either the event signal or the polling interval
-                try:
-                    await asyncio.wait_for(self._replenish_needed.wait(), timeout=5)
-                except TimeoutError:
-                    pass
-                self._replenish_needed.clear()
+                self._replenish_event.clear()
 
                 async with self._lock:
                     available_count = sum(1 for p in self._pods.values() if p.is_available)
+                    total_count = len(self._pods)
 
-                if available_count < self.pool_size:
-                    needed = self.pool_size - available_count
-                    logger.info(
+                # Count both warm and in-flight pods to avoid over-provisioning.
+                if total_count < self.pool_size:
+                    needed = self.pool_size - total_count
+                    logger.debug(
                         "Replenishing pool",
                         language=self.language,
                         available=available_count,
@@ -342,7 +339,15 @@ class PodPool:
                     for i in range(0, needed, 5):
                         batch = min(5, needed - i)
                         tasks = [self._create_warm_pod() for _ in range(batch)]
-                        await asyncio.gather(*tasks, return_exceptions=True)
+                        results = await asyncio.gather(*tasks, return_exceptions=True)
+                        for result in results:
+                            if isinstance(result, Exception):
+                                logger.warning("Failed to create warm pod during replenish", error=str(result))
+
+                try:
+                    await asyncio.wait_for(self._replenish_event.wait(), timeout=5)
+                except TimeoutError:
+                    pass
 
             except asyncio.CancelledError:
                 break
@@ -352,12 +357,13 @@ class PodPool:
                     language=self.language,
                     error=str(e),
                 )
+                await asyncio.sleep(1)
 
     async def _health_check_loop(self):
         """Background task to check pod health."""
         while self._running:
             try:
-                await asyncio.sleep(30)
+                await asyncio.sleep(15)
 
                 async with self._lock:
                     pods_to_check = [p for p in self._pods.values() if p.is_available]
@@ -381,7 +387,7 @@ class PodPool:
                         pooled_pod.health_check_failures += 1
 
                     # Remove unhealthy pods
-                    if pooled_pod.health_check_failures >= 3:
+                    if pooled_pod.health_check_failures >= 2:
                         logger.warning(
                             "Removing unhealthy pod",
                             pod_name=pooled_pod.handle.name,
@@ -392,7 +398,6 @@ class PodPool:
                         await self._delete_pod(pooled_pod.handle)
                         removed_any = True
 
-                # Trigger immediate replenishment if pods were removed (issue #30)
                 if removed_any:
                     self._signal_replenish()
 
@@ -445,8 +450,11 @@ class PodPool:
             async with self._lock:
                 pooled_pod = self._pods.get(pod_uid)
                 if not pooled_pod:
-                    # Stale entry — pod was removed (e.g. by health check).
-                    # Signal replenishment and retry with remaining time.
+                    logger.debug(
+                        "Skipping stale pod entry in queue",
+                        pod_uid=pod_uid,
+                        language=self.language,
+                    )
                     self._signal_replenish()
                     continue
 
@@ -457,14 +465,14 @@ class PodPool:
 
                 self._session_pods[session_id] = pod_uid
 
-                logger.debug(
-                    "Acquired pod from pool",
-                    pod_name=pooled_pod.handle.name,
-                    language=self.language,
-                    session_id=session_id[:12],
-                )
-
-                return pooled_pod.handle
+            logger.debug(
+                "Acquired pod from pool",
+                pod_name=pooled_pod.handle.name,
+                language=self.language,
+                session_id=session_id[:12],
+            )
+            self._signal_replenish()
+            return pooled_pod.handle
 
     async def release(self, handle: PodHandle, destroy: bool = True):
         """Release a pod back to the pool or destroy it.
@@ -473,6 +481,8 @@ class PodPool:
             handle: Pod handle
             destroy: If True, destroy the pod instead of returning to pool
         """
+        should_delete = False
+
         async with self._lock:
             pooled_pod = self._pods.get(handle.uid)
             if not pooled_pod:
@@ -483,13 +493,9 @@ class PodPool:
                 del self._session_pods[handle.session_id]
 
             if destroy:
-                # Remove from pool and delete
+                # Remove from pool; deletion happens outside the lock.
                 del self._pods[handle.uid]
-                await self._delete_pod(handle)
-                logger.debug(
-                    "Destroyed pod after execution",
-                    pod_name=handle.name,
-                )
+                should_delete = True
             else:
                 # Return to pool (reset state)
                 pooled_pod.acquired = False
@@ -501,6 +507,14 @@ class PodPool:
                     "Released pod back to pool",
                     pod_name=handle.name,
                 )
+
+        if should_delete:
+            await self._delete_pod(handle)
+            logger.debug(
+                "Destroyed pod after execution",
+                pod_name=handle.name,
+            )
+            self._signal_replenish()
 
     async def execute(
         self,

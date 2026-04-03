@@ -2,9 +2,13 @@
 # PHP execution environment with Docker Hardened Images.
 
 # PHP version configuration - single source of truth
+# These must be declared before any FROM to be available in all stages.
 ARG PHP_VERSION=8.5.3
 ARG PHP_MAJOR=8.5
 ARG DEBIAN_VERSION=debian13
+
+ARG RUNNER_IMAGE=ghcr.io/aron-muon/kubecoderun-runner:latest
+FROM ${RUNNER_IMAGE} AS runner
 
 ARG BUILD_DATE
 ARG VERSION
@@ -184,9 +188,11 @@ COPY --from=builder /opt/php /opt/php
 # Copy pre-installed composer packages with correct ownership
 COPY --from=builder --chown=65532:65532 /opt/composer/global /opt/composer/global
 
-# Copy /usr/bin/env for sidecar's /usr/bin/env -i execution pattern
-# Copy sleep for the default CMD (keep container alive for sidecar)
-COPY --from=runtime-deps /usr/bin/env /usr/bin/sleep /usr/bin/
+# Copy /usr/bin/env for ENTRYPOINT
+COPY --from=runtime-deps /usr/bin/env /usr/bin/
+
+# Copy runner binary for code execution
+COPY --from=runner /runner /usr/local/bin/runner
 
 # Copy data directory with correct ownership - DHI images run as non-root (UID 65532)
 COPY --from=runtime-deps /mnt/data /mnt/data
@@ -201,4 +207,4 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "TMPDIR=/tmp", \
     "COMPOSER_HOME=/opt/composer/global", \
     "PHP_INI_SCAN_DIR=/opt/php/etc/conf.d"]
-CMD ["sleep", "infinity"]
+CMD ["/usr/local/bin/runner"]

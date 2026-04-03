@@ -41,35 +41,41 @@ class KubernetesManager:
         self,
         namespace: str | None = None,
         pool_configs: list[PoolConfig] | None = None,
-        sidecar_image: str = "aronmuon/kubecoderun-sidecar:latest",
         default_cpu_limit: str = "1",
         default_memory_limit: str = "512Mi",
         default_cpu_request: str = "100m",
         default_memory_request: str = "128Mi",
         seccomp_profile_type: str = "RuntimeDefault",
         network_isolated: bool = False,
+        runtime_class_name: str = "",
+        pod_node_selector: str = "",
+        pod_tolerations: str = "",
     ):
         """Initialize the Kubernetes manager.
 
         Args:
             namespace: Kubernetes namespace for execution pods
             pool_configs: Pool configurations for each language
-            sidecar_image: Default sidecar container image
             default_cpu_limit: Default CPU limit for pods
             default_memory_limit: Default memory limit for pods
             default_cpu_request: Default CPU request for pods
             default_memory_request: Default memory request for pods
             seccomp_profile_type: Seccomp profile type (RuntimeDefault, Unconfined, Localhost)
             network_isolated: Whether network isolation is enabled (disables network-dependent features)
+            runtime_class_name: Optional RuntimeClassName for pod sandboxing (e.g. gvisor, kata)
+            pod_node_selector: JSON-encoded node selector labels for execution pods
+            pod_tolerations: JSON-encoded tolerations for execution pods
         """
         self.namespace = namespace or get_current_namespace()
-        self.sidecar_image = sidecar_image
         self.default_cpu_limit = default_cpu_limit
         self.default_memory_limit = default_memory_limit
         self.default_cpu_request = default_cpu_request
         self.default_memory_request = default_memory_request
         self.seccomp_profile_type = seccomp_profile_type
         self.network_isolated = network_isolated
+        self.runtime_class_name = runtime_class_name
+        self.pod_node_selector = pod_node_selector
+        self.pod_tolerations = pod_tolerations
 
         # Pool manager for warm pods
         self._pool_manager = PodPoolManager(
@@ -80,7 +86,6 @@ class KubernetesManager:
         # Job executor for cold languages
         self._job_executor = JobExecutor(
             namespace=self.namespace,
-            sidecar_image=sidecar_image,
         )
 
         # Language image mappings (can be overridden by pool configs)
@@ -273,13 +278,15 @@ class KubernetesManager:
                 image=self.get_image_for_language(language),
                 session_id=session_id,
                 namespace=self.namespace,
-                sidecar_image=self.sidecar_image,
                 cpu_limit=self.default_cpu_limit,
                 memory_limit=self.default_memory_limit,
                 cpu_request=self.default_cpu_request,
                 memory_request=self.default_memory_request,
                 seccomp_profile_type=self.seccomp_profile_type,
                 network_isolated=self.network_isolated,
+                runtime_class_name=self.runtime_class_name,
+                pod_node_selector=self.pod_node_selector,
+                pod_tolerations=self.pod_tolerations,
             )
 
             result = await self._job_executor.execute_with_job(
@@ -332,7 +339,7 @@ class KubernetesManager:
             for file_data in files:
                 try:
                     await client.post(
-                        f"{handle.sidecar_url}/files",
+                        f"{handle.runner_url}/files",
                         files={"files": (file_data.filename, file_data.content)},
                     )
                 except Exception as e:
@@ -368,7 +375,7 @@ class KubernetesManager:
         async with httpx.AsyncClient(timeout=30.0) as client:
             try:
                 response = await client.get(
-                    f"{handle.sidecar_url}/files/{path}",
+                    f"{handle.runner_url}/files/{path}",
                 )
                 if response.status_code == 200:
                     return response.content

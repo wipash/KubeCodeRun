@@ -2,6 +2,9 @@
 # Fortran execution environment with Docker Hardened Images.
 # Uses -dev variant because compilers and dev libraries must be available at runtime.
 
+ARG RUNNER_IMAGE=ghcr.io/aron-muon/kubecoderun-runner:latest
+FROM ${RUNNER_IMAGE} AS runner
+
 FROM dhi.io/debian-base:trixie-debian13-dev
 
 ARG BUILD_DATE
@@ -35,7 +38,7 @@ WORKDIR /mnt/data
 
 USER 65532
 
-# Sanitized environment via env -i (required for sidecar runtime env detection)
+# Sanitized environment via env -i
 ENTRYPOINT ["/usr/bin/env", "-i", \
     "PATH=/usr/local/bin:/usr/bin:/bin", \
     "HOME=/tmp", \
@@ -45,4 +48,7 @@ ENTRYPOINT ["/usr/bin/env", "-i", \
     "F77=gfortran", \
     "F90=gfortran", \
     "F95=gfortran"]
-CMD ["sleep", "infinity"]
+# Copy runner binary for code execution
+COPY --from=runner /runner /usr/local/bin/runner
+
+CMD ["/usr/local/bin/runner"]

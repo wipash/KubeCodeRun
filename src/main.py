@@ -146,13 +146,15 @@ async def lifespan(app: FastAPI):
             kubernetes_manager = KubernetesManager(
                 namespace=settings.k8s_namespace or None,
                 pool_configs=pool_configs,
-                sidecar_image=settings.k8s_sidecar_image,
                 default_cpu_limit=settings.k8s_cpu_limit,
                 default_memory_limit=settings.k8s_memory_limit,
                 default_cpu_request=settings.k8s_cpu_request,
                 default_memory_request=settings.k8s_memory_request,
                 seccomp_profile_type=settings.k8s_seccomp_profile_type,
                 network_isolated=settings.enable_network_isolation,
+                runtime_class_name=settings.k8s_runtime_class_name,
+                pod_node_selector=settings.k8s_pod_node_selector,
+                pod_tolerations=settings.k8s_pod_tolerations,
             )
 
             await kubernetes_manager.start()

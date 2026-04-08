@@ -15,7 +15,7 @@ from unidecode import unidecode
 # Local application imports
 from ..config import settings
 from ..dependencies import FileServiceDep, SessionServiceDep
-from ..models.session import SessionCreate
+from ..models.session import SessionCreate, SessionStatus
 from ..services.execution.output import OutputProcessor
 
 logger = structlog.get_logger(__name__)
@@ -192,6 +192,7 @@ async def list_files(
         description="Detail level: 'simple' for basic info, otherwise full details",
     ),
     file_service: FileServiceDep = None,
+    session_service: SessionServiceDep = None,
 ):
     """List all files in a session with optional detail parameter - LibreChat compatible."""
     try:
@@ -202,10 +203,38 @@ async def list_files(
             return []
 
         if detail == "summary":
-            # Return minimal summary required by client contract
+            # For summary responses, use a fresh UTC timestamp as
+            # lastModified when the session is still active.  LibreChat
+            # treats files older than 23 hours as inactive and triggers
+            # a re-upload cycle.  Since get_session() refreshes
+            # last_activity in Redis for active sessions but returns
+            # the pre-refresh model, we use datetime.now(UTC) so the
+            # response reflects the just-refreshed activity time.
+            # Only do this for ACTIVE sessions — idle/terminated ones
+            # should report their actual last_activity.
+            session_last_activity = None
+            try:
+                session = await session_service.get_session(session_id)
+                if session:
+                    if session.status == SessionStatus.ACTIVE:
+                        session_last_activity = datetime.now(UTC)
+                    elif session.last_activity:
+                        act = session.last_activity
+                        if isinstance(act, str):
+                            act = datetime.fromisoformat(act)
+                        if act.tzinfo is None:
+                            act = act.replace(tzinfo=UTC)
+                        session_last_activity = act
+            except Exception as e:
+                logger.warning(
+                    "failed_to_fetch_session_last_activity",
+                    session_id=session_id,
+                    error=str(e),
+                )
+
             summary_files = []
             for file_info in files:
-                dt = file_info.created_at
+                dt = session_last_activity or file_info.created_at
                 # Ensure UTC with 'Z' and millisecond precision
                 if isinstance(dt, str):
                     try:

@@ -260,7 +260,7 @@ class TestListFiles:
     """Tests for list_files endpoint."""
 
     @pytest.mark.asyncio
-    async def test_list_files_empty(self, mock_file_service):
+    async def test_list_files_empty(self, mock_file_service, mock_session_service):
         """Test listing files when none exist."""
         mock_file_service.list_files.return_value = []
 
@@ -268,12 +268,13 @@ class TestListFiles:
             session_id="session-123",
             detail=None,
             file_service=mock_file_service,
+            session_service=mock_session_service,
         )
 
         assert result == []
 
     @pytest.mark.asyncio
-    async def test_list_files_full_details(self, mock_file_service, mock_file_info):
+    async def test_list_files_full_details(self, mock_file_service, mock_file_info, mock_session_service):
         """Test listing files with full details."""
         mock_file_service.list_files.return_value = [mock_file_info]
 
@@ -281,6 +282,7 @@ class TestListFiles:
             session_id="session-123",
             detail=None,
             file_service=mock_file_service,
+            session_service=mock_session_service,
         )
 
         assert len(result) == 1
@@ -288,7 +290,7 @@ class TestListFiles:
         assert "contentType" in result[0]
 
     @pytest.mark.asyncio
-    async def test_list_files_simple(self, mock_file_service, mock_file_info):
+    async def test_list_files_simple(self, mock_file_service, mock_file_info, mock_session_service):
         """Test listing files with simple details."""
         mock_file_service.list_files.return_value = [mock_file_info]
 
@@ -296,6 +298,7 @@ class TestListFiles:
             session_id="session-123",
             detail="simple",
             file_service=mock_file_service,
+            session_service=mock_session_service,
         )
 
         assert len(result) == 1
@@ -304,14 +307,16 @@ class TestListFiles:
         assert "contentType" not in result[0]
 
     @pytest.mark.asyncio
-    async def test_list_files_summary(self, mock_file_service, mock_file_info):
+    async def test_list_files_summary(self, mock_file_service, mock_file_info, mock_session_service):
         """Test listing files with summary details."""
         mock_file_service.list_files.return_value = [mock_file_info]
+        mock_session_service.get_session = AsyncMock(return_value=None)
 
         result = await list_files(
             session_id="session-123",
             detail="summary",
             file_service=mock_file_service,
+            session_service=mock_session_service,
         )
 
         assert len(result) == 1
@@ -319,7 +324,69 @@ class TestListFiles:
         assert "lastModified" in result[0]
 
     @pytest.mark.asyncio
-    async def test_list_files_error(self, mock_file_service):
+    async def test_list_files_summary_uses_fresh_timestamp_for_active_session(
+        self, mock_file_service, mock_file_info, mock_session_service
+    ):
+        """Test that summary detail uses a fresh timestamp as lastModified
+        when the session is active.
+
+        LibreChat treats files older than 23 hours as inactive and triggers
+        a costly re-upload cycle.  Using a fresh timestamp after confirming
+        the session exists keeps agent files fresh.
+        """
+        from src.models.session import SessionStatus
+
+        mock_session = MagicMock()
+        mock_session.status = SessionStatus.ACTIVE
+        mock_session_service.get_session = AsyncMock(return_value=mock_session)
+
+        # File was created long ago
+        mock_file_info.created_at = datetime(2020, 1, 1, 0, 0, 0, tzinfo=UTC)
+        mock_file_service.list_files.return_value = [mock_file_info]
+        fixed_now = datetime(2024, 1, 2, 3, 4, 5, tzinfo=UTC)
+
+        with patch("src.api.files.datetime", wraps=datetime) as mock_datetime:
+            mock_datetime.now.return_value = fixed_now
+
+            result = await list_files(
+                session_id="session-123",
+                detail="summary",
+                file_service=mock_file_service,
+                session_service=mock_session_service,
+            )
+
+        assert len(result) == 1
+        expected_last_modified = fixed_now.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        assert result[0]["lastModified"] == expected_last_modified
+        assert "2020" not in result[0]["lastModified"]
+
+    @pytest.mark.asyncio
+    async def test_list_files_summary_uses_last_activity_for_non_active_session(
+        self, mock_file_service, mock_file_info, mock_session_service
+    ):
+        """Test that non-active sessions use session.last_activity, not now()."""
+        from src.models.session import SessionStatus
+
+        mock_session = MagicMock()
+        mock_session.status = SessionStatus.IDLE
+        mock_session.last_activity = datetime(2026, 4, 5, 10, 0, 0, tzinfo=UTC)
+        mock_session_service.get_session = AsyncMock(return_value=mock_session)
+
+        mock_file_info.created_at = datetime(2020, 1, 1, 0, 0, 0, tzinfo=UTC)
+        mock_file_service.list_files.return_value = [mock_file_info]
+
+        result = await list_files(
+            session_id="session-123",
+            detail="summary",
+            file_service=mock_file_service,
+            session_service=mock_session_service,
+        )
+
+        assert len(result) == 1
+        assert "2026-04-05" in result[0]["lastModified"]
+
+    @pytest.mark.asyncio
+    async def test_list_files_error(self, mock_file_service, mock_session_service):
         """Test list files error returns 404."""
         mock_file_service.list_files.side_effect = Exception("Not found")
 
@@ -328,6 +395,7 @@ class TestListFiles:
                 session_id="session-123",
                 detail=None,
                 file_service=mock_file_service,
+                session_service=mock_session_service,
             )
 
         assert exc_info.value.status_code == 404

@@ -479,9 +479,7 @@ class TestExecuteWithJob:
         """Test that pod-not-ready returns failure result and the handle for caller cleanup."""
         with patch.object(job_executor, "create_job", return_value=job_handle):
             with patch.object(job_executor, "wait_for_pod_ready", return_value=False):
-                result, returned_handle = await job_executor.execute_with_job(
-                    pod_spec, "session-123", "print('Hello')"
-                )
+                result, returned_handle = await job_executor.execute_with_job(pod_spec, "session-123", "print('Hello')")
 
         assert result.exit_code == 1
         assert "failed to start" in result.stderr

@@ -386,9 +386,7 @@ class ExecutionOrchestrator:
             )
 
         if failed_files:
-            raise ValidationError(
-                message=f"Failed to mount {len(failed_files)} file(s): {', '.join(failed_files)}"
-            )
+            raise ValidationError(message=f"Failed to mount {len(failed_files)} file(s): {', '.join(failed_files)}")
 
         return mounted
 

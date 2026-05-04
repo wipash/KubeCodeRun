@@ -1,11 +1,11 @@
 ---
 # KubeCodeRun-y7ec
 title: 'Validate integration: tests, lint, smoke test'
-status: todo
+status: in-progress
 type: task
 priority: normal
 created_at: 2026-05-04T21:38:22Z
-updated_at: 2026-05-04T22:28:20Z
+updated_at: 2026-05-04T22:50:48Z
 parent: KubeCodeRun-1ue3
 blocked_by:
     - KubeCodeRun-sw3t

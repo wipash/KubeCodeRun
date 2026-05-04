@@ -381,6 +381,10 @@ class KubernetesManager:
                     f"{handle.runner_url}/files/{path}",
                 )
                 if response.status_code == 200:
+                    # Reject JSON directory listings — runner returns JSON when path is a directory
+                    content_type = response.headers.get("content-type", "")
+                    if isinstance(content_type, str) and "application/json" in content_type:
+                        return None
                     return response.content
             except Exception as e:
                 logger.error(

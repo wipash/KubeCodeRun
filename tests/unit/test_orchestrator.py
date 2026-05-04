@@ -502,7 +502,8 @@ class TestMountFilesExtended:
 
     @pytest.mark.asyncio
     async def test_mount_files_file_not_found(self, orchestrator, mock_file_service):
-        """Test mounting files when file is not found."""
+        """Test that mounting raises ValidationError when files cannot be found."""
+        from src.models.errors import ValidationError
         from src.models.exec import RequestFile
 
         mock_file_service.get_file_info.return_value = None
@@ -512,9 +513,8 @@ class TestMountFilesExtended:
         request = ExecRequest(code="print('hello')", lang="python", files=[request_file])
         ctx = ExecutionContext(request=request, request_id="req-123")
 
-        result = await orchestrator._mount_files(ctx)
-
-        assert result == []
+        with pytest.raises(ValidationError, match="Failed to mount"):
+            await orchestrator._mount_files(ctx)
 
     @pytest.mark.asyncio
     async def test_mount_files_lookup_by_name(self, orchestrator, mock_file_service):
@@ -948,10 +948,10 @@ class TestGetFileFromContainer:
 
     @pytest.mark.asyncio
     async def test_get_file_no_container(self, orchestrator):
-        """Test getting file when container is None and no job content."""
+        """Test getting file when container is None and no job content — returns None."""
         result = await orchestrator._get_file_from_container(None, "/mnt/data/test.txt", session_id="session-123")
 
-        assert b"Pod not found" in result
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_get_file_no_container_with_job_content(self, orchestrator, mock_execution_service):
@@ -978,7 +978,7 @@ class TestGetFileFromContainer:
 
     @pytest.mark.asyncio
     async def test_get_file_returns_none(self, orchestrator, mock_execution_service):
-        """Test file retrieval when copy returns None."""
+        """Test file retrieval when copy returns None — passes through unchanged."""
         mock_container = MagicMock()
         mock_container.name = "pod-123"
 
@@ -986,7 +986,7 @@ class TestGetFileFromContainer:
 
         result = await orchestrator._get_file_from_container(mock_container, "/mnt/data/test.txt")
 
-        assert b"Failed to retrieve" in result
+        assert result is None
 
 
 class TestExtractOutputs:

@@ -297,6 +297,7 @@ class ExecutionOrchestrator:
 
         mounted = []
         mounted_ids = set()
+        failed_files: list[str] = []
 
         for file_ref in ctx.request.files:
             # Get file info - try by ID first
@@ -317,6 +318,7 @@ class ExecutionOrchestrator:
                     file_id=file_ref.id,
                     name=file_ref.name,
                 )
+                failed_files.append(f"{file_ref.id} ({file_ref.name})")
                 continue
 
             # Skip duplicates
@@ -334,6 +336,7 @@ class ExecutionOrchestrator:
                     file_id=file_info.file_id,
                     filename=file_info.filename,
                 )
+                failed_files.append(f"{file_ref.id} ({file_ref.name})")
                 continue
 
             mounted.append(
@@ -380,6 +383,11 @@ class ExecutionOrchestrator:
                 file_id=file_info.file_id,
                 filename=file_info.filename,
                 size=len(content),
+            )
+
+        if failed_files:
+            raise ValidationError(
+                message=f"Failed to mount {len(failed_files)} file(s): {', '.join(failed_files)}"
             )
 
         return mounted
@@ -529,6 +537,10 @@ class ExecutionOrchestrator:
                 # Get file content from container or pre-downloaded Job cache
                 file_content = await self._get_file_from_container(ctx.container, file_path, session_id=ctx.session_id)
 
+                # Skip if content unavailable (pod gone, file vanished, or runner returned a directory listing)
+                if file_content is None:
+                    continue
+
                 # Store the file
                 file_id = await self.file_service.store_execution_output_file(ctx.session_id, filename, file_content)
 
@@ -545,7 +557,7 @@ class ExecutionOrchestrator:
 
         return generated
 
-    async def _get_file_from_container(self, container: Any, file_path: str, session_id: str | None = None) -> bytes:
+    async def _get_file_from_container(self, container: Any, file_path: str, session_id: str | None = None) -> bytes | None:
         """Get file content from the execution pod via runner HTTP API.
 
         For Job-based execution where the pod is already destroyed, falls back
@@ -555,6 +567,10 @@ class ExecutionOrchestrator:
             container: PodHandle object (passed directly, no session lookup needed)
             file_path: Path to file inside pod (e.g., /mnt/data/output.png)
             session_id: Session identifier for scoping Job file cache lookups
+
+        Returns:
+            File content bytes, or None if the file is unavailable (pod gone,
+            directory listing returned by runner, or copy failed).
         """
         if not container:
             # Job path: check for pre-downloaded content
@@ -562,18 +578,13 @@ class ExecutionOrchestrator:
                 job_content = self.execution_service.pop_job_file_content(session_id, file_path)
                 if job_content is not None:
                     return job_content
-            return f"# Pod not found for file: {file_path}\n".encode()
+            return None
 
         # Extract filename from path
         filename = file_path.split("/")[-1] if "/" in file_path else file_path
 
         kubernetes_manager = self.execution_service.kubernetes_manager
-        content = await kubernetes_manager.copy_file_from_pod(container, filename)
-
-        if content:
-            return content
-        else:
-            return f"# Failed to retrieve file: {file_path}\n".encode()
+        return await kubernetes_manager.copy_file_from_pod(container, filename)
 
     def _extract_outputs(self, ctx: ExecutionContext) -> None:
         """Extract stdout and stderr from execution outputs."""

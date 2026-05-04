@@ -5,7 +5,7 @@ status: in-progress
 type: task
 priority: normal
 created_at: 2026-05-04T21:38:22Z
-updated_at: 2026-05-04T22:50:48Z
+updated_at: 2026-05-04T23:34:47Z
 parent: KubeCodeRun-1ue3
 blocked_by:
     - KubeCodeRun-sw3t
@@ -23,13 +23,14 @@ Final validation pass before merging integration branch into main.
 
 ## Todo
 
-- [ ] `just lint` clean
-- [ ] `just format-check` clean
-- [ ] `just typecheck` clean
-- [ ] `just test-unit` all green
-- [ ] `just test-integration` against local docker-compose Redis/MinIO + a real cluster
-- [ ] Build all language images (`just docker-build` or scripts/build-images.sh)
-- [ ] Smoke-test against a real cluster:
+- [x] `just lint` clean
+- [x] `just format-check` clean (after `just format`)
+- [x] `just typecheck` clean
+- [x] `just test-unit` — 1330 passed
+- [x] `just build-images python` — confirmed working by user
+- [x] `just test-images -l py` — confirmed working by user
+- [ ] `just test-integration` against full cluster (deferred — user will run post-merge)
+- [ ] Smoke-test against a real cluster (deferred — user will run post-merge):
     - [ ] Python warm-pool execution returns generated files
     - [ ] Pool replenishment fires within ~1s after pod kill
     - [ ] LibreChat-style flow: GET /files then POST /exec doesn't hang up

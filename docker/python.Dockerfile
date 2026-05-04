@@ -74,6 +74,12 @@ RUN --mount=type=cache,target=/root/.cache/pip \
      -r /tmp/python-documents.txt \
      -r /tmp/python-utilities.txt
 
+# Install packages that may not have wheels for all architectures (e.g. ARM).
+# Best-effort: build continues even if these fail.
+COPY requirements/python-optional.txt /tmp/python-optional.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+     pip install -r /tmp/python-optional.txt || true
+
 ################################
 # Runtime dependencies stage - install runtime libraries
 ################################

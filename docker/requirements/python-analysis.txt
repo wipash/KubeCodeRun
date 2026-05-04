@@ -16,3 +16,7 @@ scipy>=1.16.1
 statsmodels>=0.14.4
 sympy>=1.13.3
 threadpoolctl>=3.5.0
+
+# Engineering / CAD / file-format helpers
+fortranformat>=2.0.3
+ezdxf>=1.4.3

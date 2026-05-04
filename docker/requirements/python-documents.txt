@@ -1,6 +1,7 @@
 # Document processing - PDF
 pdf2image>=1.17.0
 pdfminer.six>=20231228
+pymupdf>=1.27.1
 pypdf>=5.1.0
 PyPDF2>=3.0.1
 reportlab>=4.2.5

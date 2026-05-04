@@ -1,11 +1,11 @@
 ---
 # KubeCodeRun-9ma5
 title: Port event-driven pool replenishment onto post-#42 pool.py
-status: todo
+status: completed
 type: task
 priority: high
 created_at: 2026-05-04T21:37:25Z
-updated_at: 2026-05-04T22:27:56Z
+updated_at: 2026-05-04T22:43:41Z
 parent: KubeCodeRun-1ue3
 blocked_by:
     - KubeCodeRun-p391
@@ -63,10 +63,24 @@ Don't cherry-pick — re-implement the fork's algorithm on the post-#42 pool.py:
 
 ## Todo
 
-- [ ] Read post-#42 pool.py end-to-end to understand new shape
-- [ ] Open ed6fbe5 + 5d3b8df side-by-side
-- [ ] Re-implement event-driven replenish with total_count guard
-- [ ] Re-implement health-check loop (keep upstream 30s interval and 3-strike threshold; add fork's replenish-on-removal signal)
-- [ ] Re-implement acquire retry / signal-on-acquire-fail
-- [ ] Run tests/unit/test_pool.py and test_pool_replenishment.py
-- [ ] Smoke-test against real cluster: kill pods, watch replenishment latency
+- [x] Read post-#42 pool.py end-to-end to understand new shape
+- [x] Open ed6fbe5 + 5d3b8df side-by-side
+- [x] Re-implement event-driven replenish with total_count guard
+- [x] Health-check loop already has 30s interval + 3-strike threshold + replenish-on-removal signal upstream — kept as-is
+- [x] Acquire retry / signal-on-acquire-fail already present upstream — kept as-is
+- [x] Run tests/unit/test_pool.py and test_pool_replenishment.py — all pass
+- [ ] Smoke-test against real cluster: kill pods, watch replenishment latency (deferred to validation bean y7ec)
+
+## Summary of Changes
+
+Upstream's post-#42 pool.py already had most of the fork's event-driven structure (signal_replenish, event-driven replenish loop with 5s timeout, acquire retries on stale uid, health check triggers replenish on removal). What was missing:
+
+1. **Lost-wakeup race** — moved `_replenish_needed.clear()` to the top of the loop body so any signal during the check/work phase is preserved for the next iteration's wait.
+
+2. **Over-provisioning during in-flight creates** — replaced `available_count < pool_size` with `total_count < pool_size` so we don't create more pods while previous creates are still running.
+
+3. **Error backoff** — added `asyncio.sleep(1)` in the replenish loop's exception handler to prevent tight-spin on persistent errors.
+
+4. **Lock scope in release()** — moved `_delete_pod` outside the `async with self._lock:` block so network I/O (pod deletion) doesn't block other pool operations. Also added a `_signal_replenish()` call after a destroy so the pool refills immediately.
+
+Tunables were left at upstream values per the decision (30s health interval, 3-strike threshold, batch size 5). Tests in test_pool.py (78) and test_pool_replenishment.py (9) all pass.

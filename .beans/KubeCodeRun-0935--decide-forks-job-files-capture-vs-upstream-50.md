@@ -1,11 +1,11 @@
 ---
 # KubeCodeRun-0935
 title: 'Decide: fork''s job-files capture vs upstream #50'
-status: todo
+status: completed
 type: task
 priority: normal
 created_at: 2026-05-04T21:37:44Z
-updated_at: 2026-05-04T22:11:23Z
+updated_at: 2026-05-04T22:49:27Z
 parent: KubeCodeRun-1ue3
 blocked_by:
     - KubeCodeRun-p391
@@ -49,12 +49,34 @@ Behavioral bonuses we get from fork's approach:
 
 ## Todo
 
-- [ ] Read post-#42 `job_executor.py` end-to-end (file structure changed substantially under the runner-binary rewrite)
-- [ ] Hand-port the signature change: `execute_with_job` returns `(ExecutionResult, JobHandle | None)`, removes auto-delete on success, deletes on exception
-- [ ] Hand-port `manager.execute_with_pod_or_job` to thread the JobHandle through
-- [ ] Hand-port `manager.destroy_pod` isinstance dispatch (PodHandle → pool.release, JobHandle → job_executor.delete_job)
-- [ ] Hand-port `runner._detect_generated_files` type widening to `PodHandle | JobHandle`
-- [ ] Hand-port the `container_source == 'job'` branch that always detects files (skip Python keyword heuristic)
-- [ ] Export JobHandle from `src/services/kubernetes/__init__.py`
-- [ ] Re-apply tests/unit/test_execution_runner.py, test_job_executor.py, test_kubernetes_manager.py changes
-- [ ] Verify any upstream #50 tests in test_orchestrator.py / test_execution_runner.py are removed or rewritten (they test the pre-download path that won't exist)
+- [x] Read post-#42 `job_executor.py` end-to-end
+- [x] Hand-port `execute_with_job` to return `(ExecutionResult, JobHandle | None)`; remove auto-delete on success; delete on exception
+- [x] Removed upstream's `_collect_generated_files` method (no longer needed)
+- [x] Hand-port `manager.execute_code` to thread the JobHandle through
+- [x] Hand-port `manager.destroy_pod` isinstance dispatch (PodHandle → pool.release, JobHandle → job_executor.delete_job)
+- [x] Hand-port `runner._detect_generated_files` type widening to `PodHandle | JobHandle`
+- [x] Removed upstream's job-files cache (`_job_file_contents`, `pop_job_file_content`) — pipeline now unified
+- [x] Removed upstream's `ExecutionResult.generated_files` field — no longer needed
+- [x] Export JobHandle from `src/services/kubernetes/__init__.py`
+- [x] Removed `pop_job_file_content` from ExecutionServiceInterface
+- [x] Updated tests/unit/test_execution_runner.py, test_job_executor.py, test_kubernetes_manager.py, test_orchestrator.py — removed upstream #50 tests, updated signatures
+
+## Summary of Changes
+
+Replaced upstream #50's pre-download cache architecture with the fork's unified-pipeline approach:
+
+**job_executor.py** — `execute_with_job` now returns `tuple[ExecutionResult, JobHandle | None]`. The job is no longer auto-deleted in a `finally:` block; the caller (manager.destroy_pod) owns lifecycle. Exceptions still delete the job before re-raising. Removed the entire `_collect_generated_files` method (~85 lines).
+
+**manager.py** — `execute_code` unpacks and threads the JobHandle through to the orchestrator. `destroy_pod` dispatches via `isinstance(handle, JobHandle)` to `job_executor.delete_job`. `_active_handles` widened to `dict[str, PodHandle | JobHandle]`.
+
+**runner.py** — `_detect_generated_files` accepts `PodHandle | JobHandle`. Removed the `_job_file_contents` dict, the `pop_job_file_content` method, and the entire "job path" branch in `execute()` (was copying upstream's pre-downloaded bytes into the cache).
+
+**orchestrator.py** — `_get_file_from_container` no longer takes `session_id` (was only used for job-cache lookup); when container is None, returns None directly.
+
+**interfaces.py** — Removed the `pop_job_file_content` method from ExecutionServiceInterface.
+
+**models.py** — Removed `ExecutionResult.generated_files` field.
+
+**__init__.py** — Exported JobHandle from the kubernetes package.
+
+Net change: ~180 lines removed (upstream #50 was 212+/15-, this reversal is most of that). The remaining file-detection pipeline is the original pool-path logic, now used uniformly for both pool and job execution. Test count: 1330 (1334 minus 3 removed pop_job_file_content tests, minus 1 removed test_get_file_no_container_with_job_content).

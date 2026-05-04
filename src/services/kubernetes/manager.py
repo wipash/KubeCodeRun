@@ -20,6 +20,7 @@ from .job_executor import JobExecutor
 from .models import (
     ExecutionResult,
     FileData,
+    JobHandle,
     PodHandle,
     PodSpec,
     PoolConfig,
@@ -104,7 +105,7 @@ class KubernetesManager:
         }
 
         # Track active executions
-        self._active_handles: dict[str, PodHandle] = {}  # session_id -> handle
+        self._active_handles: dict[str, PodHandle | JobHandle] = {}  # session_id -> handle
 
         self._started = False
 
@@ -292,7 +293,7 @@ class KubernetesManager:
                 image_pull_secrets=self.image_pull_secrets,
             )
 
-            result = await self._job_executor.execute_with_job(
+            result, job_handle = await self._job_executor.execute_with_job(
                 spec,
                 session_id,
                 code,
@@ -301,13 +302,13 @@ class KubernetesManager:
                 initial_state=initial_state,
                 capture_state=capture_state,
             )
-            return result, None, "job"
+            return result, job_handle, "job"
 
-    async def destroy_pod(self, handle: PodHandle):
-        """Destroy an execution pod.
+    async def destroy_pod(self, handle: PodHandle | JobHandle):
+        """Destroy an execution pod or job.
 
         Args:
-            handle: Pod handle to destroy
+            handle: Pod or job handle to destroy
         """
         if not handle:
             return
@@ -316,8 +317,11 @@ class KubernetesManager:
         if handle.session_id and handle.session_id in self._active_handles:
             del self._active_handles[handle.session_id]
 
-        # Release from pool (with destroy=True)
-        await self._pool_manager.release(handle, destroy=True)
+        if isinstance(handle, JobHandle):
+            await self._job_executor.delete_job(handle)
+        else:
+            # Release from pool (with destroy=True)
+            await self._pool_manager.release(handle, destroy=True)
 
     async def copy_files_to_pod(
         self,

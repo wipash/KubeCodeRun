@@ -73,7 +73,6 @@ class TestRunnerInit:
         assert runner._manager_started is False
         assert runner.active_executions == {}
         assert runner.session_handles == {}
-        assert runner._job_file_contents == {}
 
     def test_init_without_manager(self):
         """Test initialization without manager."""
@@ -537,33 +536,6 @@ class TestGetContainerBySession:
         """Test getting nonexistent handle."""
         result = runner.get_container_by_session("nonexistent")
         assert result is None
-
-
-class TestPopJobFileContent:
-    """Tests for pop_job_file_content method."""
-
-    def test_pop_existing_content(self, runner):
-        """Test popping pre-downloaded file content."""
-        runner._job_file_contents[("session-123", "/mnt/data/output.png")] = b"PNG data"
-
-        result = runner.pop_job_file_content("session-123", "/mnt/data/output.png")
-
-        assert result == b"PNG data"
-        assert ("session-123", "/mnt/data/output.png") not in runner._job_file_contents
-
-    def test_pop_nonexistent_content(self, runner):
-        """Test popping content for non-existent path."""
-        result = runner.pop_job_file_content("session-123", "/mnt/data/nonexistent.txt")
-        assert result is None
-
-    def test_pop_wrong_session(self, runner):
-        """Test that files are scoped by session_id."""
-        runner._job_file_contents[("session-A", "/mnt/data/output.png")] = b"PNG data"
-
-        result = runner.pop_job_file_content("session-B", "/mnt/data/output.png")
-
-        assert result is None
-        assert ("session-A", "/mnt/data/output.png") in runner._job_file_contents
 
 
 class TestGetExecution:

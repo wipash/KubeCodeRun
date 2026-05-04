@@ -534,8 +534,8 @@ class ExecutionOrchestrator:
                 continue
 
             try:
-                # Get file content from container or pre-downloaded Job cache
-                file_content = await self._get_file_from_container(ctx.container, file_path, session_id=ctx.session_id)
+                # Get file content from the live pod handle (pool or job)
+                file_content = await self._get_file_from_container(ctx.container, file_path)
 
                 # Skip if content unavailable (pod gone, file vanished, or runner returned a directory listing)
                 if file_content is None:
@@ -557,27 +557,18 @@ class ExecutionOrchestrator:
 
         return generated
 
-    async def _get_file_from_container(self, container: Any, file_path: str, session_id: str | None = None) -> bytes | None:
+    async def _get_file_from_container(self, container: Any, file_path: str) -> bytes | None:
         """Get file content from the execution pod via runner HTTP API.
 
-        For Job-based execution where the pod is already destroyed, falls back
-        to pre-downloaded file content stored by the runner.
-
         Args:
-            container: PodHandle object (passed directly, no session lookup needed)
+            container: PodHandle or JobHandle (passed directly, no session lookup needed)
             file_path: Path to file inside pod (e.g., /mnt/data/output.png)
-            session_id: Session identifier for scoping Job file cache lookups
 
         Returns:
             File content bytes, or None if the file is unavailable (pod gone,
             directory listing returned by runner, or copy failed).
         """
         if not container:
-            # Job path: check for pre-downloaded content
-            if session_id:
-                job_content = self.execution_service.pop_job_file_content(session_id, file_path)
-                if job_content is not None:
-                    return job_content
             return None
 
         # Extract filename from path

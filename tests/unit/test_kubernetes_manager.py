@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.services.kubernetes.manager import KubernetesManager
-from src.services.kubernetes.models import ExecutionResult, FileData, PodHandle, PoolConfig
+from src.services.kubernetes.models import ExecutionResult, FileData, JobHandle, PodHandle, PoolConfig
 
 
 @pytest.fixture
@@ -326,10 +326,19 @@ class TestExecuteCode:
     async def test_execute_code_with_job(
         self, kubernetes_manager, mock_pool_manager, mock_job_executor, sample_execution_result
     ):
-        """Test code execution using Job."""
+        """Test code execution using Job — manager threads the JobHandle through to the caller."""
         mock_pool_manager.uses_pool.return_value = False
         mock_pool_manager.acquire.return_value = None
-        mock_job_executor.execute_with_job.return_value = sample_execution_result
+        sample_job_handle = JobHandle(
+            uid="job-uid-123",
+            name="job-test",
+            namespace="default",
+            session_id="session-123",
+            language="rust",
+            pod_name="pod-test",
+            pod_ip="10.0.0.1",
+        )
+        mock_job_executor.execute_with_job.return_value = (sample_execution_result, sample_job_handle)
 
         result, handle, source = await kubernetes_manager.execute_code(
             session_id="session-123",
@@ -338,7 +347,7 @@ class TestExecuteCode:
         )
 
         assert result is sample_execution_result
-        assert handle is None
+        assert handle is sample_job_handle
         assert source == "job"
         mock_job_executor.execute_with_job.assert_called_once()
 

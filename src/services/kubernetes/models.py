@@ -78,7 +78,6 @@ class ExecutionResult:
     execution_time_ms: int
     state: str | None = None  # Base64-encoded state
     state_errors: list[str] | None = None
-    generated_files: list[dict[str, Any]] | None = None  # Files generated during execution (for Job path)
 
 
 @dataclass

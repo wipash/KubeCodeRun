@@ -455,7 +455,7 @@ class TestExecuteWithJob:
 
     @pytest.mark.asyncio
     async def test_execute_with_job_success(self, job_executor, pod_spec, job_handle):
-        """Test successful execution with job."""
+        """Test successful execution returns result and the JobHandle for caller-owned cleanup."""
         mock_result = ExecutionResult(
             exit_code=0,
             stdout="Hello",
@@ -463,25 +463,29 @@ class TestExecuteWithJob:
             execution_time_ms=100,
         )
 
-        with patch.object(job_executor, "create_job", return_value=job_handle) as mock_create:
+        with patch.object(job_executor, "create_job", return_value=job_handle):
             with patch.object(job_executor, "wait_for_pod_ready", return_value=True):
                 with patch.object(job_executor, "execute", return_value=mock_result):
-                    with patch.object(job_executor, "delete_job", return_value=None):
-                        result = await job_executor.execute_with_job(pod_spec, "session-123", "print('Hello')")
+                    result, returned_handle = await job_executor.execute_with_job(
+                        pod_spec, "session-123", "print('Hello')"
+                    )
 
         assert result.exit_code == 0
         assert result.stdout == "Hello"
+        assert returned_handle is job_handle
 
     @pytest.mark.asyncio
     async def test_execute_with_job_pod_not_ready(self, job_executor, pod_spec, job_handle):
-        """Test execution when pod fails to start."""
+        """Test that pod-not-ready returns failure result and the handle for caller cleanup."""
         with patch.object(job_executor, "create_job", return_value=job_handle):
             with patch.object(job_executor, "wait_for_pod_ready", return_value=False):
-                with patch.object(job_executor, "delete_job", return_value=None):
-                    result = await job_executor.execute_with_job(pod_spec, "session-123", "print('Hello')")
+                result, returned_handle = await job_executor.execute_with_job(
+                    pod_spec, "session-123", "print('Hello')"
+                )
 
         assert result.exit_code == 1
         assert "failed to start" in result.stderr
+        assert returned_handle is job_handle
 
     @pytest.mark.asyncio
     async def test_execute_with_job_cleanup_on_error(self, job_executor, pod_spec, job_handle):

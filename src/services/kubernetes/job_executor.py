@@ -398,90 +398,6 @@ class JobExecutor:
                     error=str(e),
                 )
 
-    async def _collect_generated_files(
-        self,
-        job: JobHandle,
-        uploaded_files: list[FileData] | None = None,
-    ) -> list[dict[str, Any]]:
-        """Detect and download generated files from a Job pod before cleanup.
-
-        For Job-based execution the pod is destroyed after this method returns,
-        so we must download file contents here.
-
-        Args:
-            job: Job handle with ready pod
-            uploaded_files: Files that were uploaded before execution (to exclude)
-
-        Returns:
-            List of dicts with keys: name, path, size, content (bytes)
-        """
-        from ...config import settings
-        from ...services.execution.runner import _CODE_FILENAMES
-
-        runner_url = job.runner_url
-        if not runner_url:
-            return []
-
-        uploaded_names = set()
-        if uploaded_files:
-            for f in uploaded_files:
-                uploaded_names.add(f.filename)
-
-        try:
-            client = await self._get_http_client()
-
-            # List files in the working directory
-            response = await client.get(f"{runner_url}/files", timeout=10)
-            if response.status_code != 200:
-                return []
-
-            all_files = response.json().get("files", [])
-            collected = []
-
-            for f in all_files:
-                name = f.get("name", "")
-                if not name or name in _CODE_FILENAMES or name in uploaded_names:
-                    continue
-                size = f.get("size", 0)
-                if size <= 0 or size > settings.max_file_size_mb * 1024 * 1024:
-                    continue
-
-                # Download file content
-                try:
-                    dl_response = await client.get(
-                        f"{runner_url}/files/{name}",
-                        timeout=30,
-                    )
-                    if dl_response.status_code == 200:
-                        collected.append(
-                            {
-                                "name": name,
-                                "path": f"/mnt/data/{name}",
-                                "size": size,
-                                "content": dl_response.content,
-                            }
-                        )
-                except Exception as e:
-                    logger.warning(
-                        "Failed to download generated file from job",
-                        job_name=job.name,
-                        filename=name,
-                        error=str(e),
-                    )
-
-                if len(collected) >= settings.max_output_files:
-                    break
-
-            return collected
-
-        except Exception as e:
-            logger.warning(
-                "Failed to collect generated files from job",
-                job_name=job.name,
-                error=str(e),
-            )
-            return []
-
     async def execute_with_job(
         self,
         spec: PodSpec,
@@ -491,10 +407,12 @@ class JobExecutor:
         files: list[FileData] | None = None,
         initial_state: str | None = None,
         capture_state: bool = False,
-    ) -> ExecutionResult:
-        """Execute code by creating a job, waiting for ready, executing, and cleaning up.
+    ) -> tuple[ExecutionResult, JobHandle | None]:
+        """Execute code by creating a job, waiting for ready, and executing.
 
-        This is the main entry point for job-based execution.
+        The caller is responsible for cleaning up the job via the returned
+        handle (typically by calling ``KubernetesManager.destroy_pod``).
+        On exception, the job is cleaned up here before re-raising.
 
         Args:
             spec: Pod specification
@@ -506,7 +424,8 @@ class JobExecutor:
             capture_state: Whether to capture state
 
         Returns:
-            ExecutionResult
+            Tuple of (ExecutionResult, JobHandle or None). The handle is
+            None if pod readiness failed.
         """
         job = None
         try:
@@ -521,7 +440,7 @@ class JobExecutor:
                     stdout="",
                     stderr="Job pod failed to start",
                     execution_time_ms=0,
-                )
+                ), job
 
             # Log the job state before executing
             logger.info(
@@ -542,10 +461,6 @@ class JobExecutor:
                 capture_state=capture_state,
             )
 
-            # Detect and download generated files before job cleanup
-            if job.runner_url and result.exit_code == 0:
-                result.generated_files = await self._collect_generated_files(job, files)
-
             logger.info(
                 "Job execution completed",
                 job_name=job.name,
@@ -553,12 +468,12 @@ class JobExecutor:
                 stdout_len=len(result.stdout),
                 stderr_len=len(result.stderr),
                 stderr_preview=result.stderr[:200] if result.stderr else "",
-                generated_files_count=len(result.generated_files) if result.generated_files else 0,
             )
 
-            return result
+            return result, job
 
-        finally:
-            # Clean up job (TTL will also handle this)
+        except Exception:
+            # Clean up job on error — caller won't get the handle
             if job:
                 asyncio.create_task(self.delete_job(job))
+            raise
